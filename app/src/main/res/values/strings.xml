@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">AirSpeaker</string>
+    <string name="default_friendly_name">Room Speaker</string>
+    <string name="waiting_for_airplay">Waiting for AirPlay</string>
+</resources>
