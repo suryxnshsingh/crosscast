@@ -27,3 +27,16 @@ Foreground-service strategy, explained in `docs/notes.md` → Foreground service
 5. *(TV)* Kill the process with `adb -s $TV shell run-as dev.suryansh.airspeaker kill -9 <pid>`. Within about 30 s the service is running again under a new pid (START_STICKY).
 6. *(TV)* `adb -s $TV shell cmd deviceidle whitelist` includes `dev.suryansh.airspeaker`. This TV has no battery-optimisation dialog, so this is set over adb.
 7. *(you)* Reboot the TV (Settings → System → Restart) and do **not** open the app. Turn Wireless debugging back on and reconnect. Step 2's `dumpsys` then shows the service running and `logcat -s mdns` shows it started from `BOOT_COMPLETED`.
+
+## Phase 3: discovery (mDNS)
+
+1. *(Mac)* `./gradlew test` passes, covering:
+   - the service-name format `<12 hex>@<name>`
+   - the TXT record set
+   - name truncation to the 63-byte DNS label limit
+   - the device ID is generated once, then stays stable
+2. *(TV)* After `adb install -r`, `adb -s $TV logcat -d -s mdns` shows `registered _raop._tcp '<ID>@Room Speaker' port 5000`.
+3. *(Mac)* `dns-sd -B _raop._tcp local.` lists `<ID>@Room Speaker`. Then `dns-sd -L "<ID>@Room Speaker" _raop._tcp local.` shows port 5000 and every TXT key: `txtvers ch cn et ek sr ss tp vn vs md am da sv sf fv pw`.
+4. *(TV)* After `run-as … kill -9` and the sticky restart, the advertised ID is the same as before (it's persisted).
+5. *(you)* iPhone → Control Centre → long-press the music tile → AirPlay icon. **Room Speaker** is listed. It won't play until Phase 4.
+6. *(you)* Toggle the TV's Wi-Fi off and back on. Within about 10 s `logcat -s mdns` shows the service registered again and the Mac's `dns-sd -B` lists it again.

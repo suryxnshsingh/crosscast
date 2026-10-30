@@ -26,6 +26,9 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
 
 ## Engine / protocol
 
+- **TXT records (Phase 3):** we use the set classic Shairport Sync 5.x advertises, not the plan's original list. It adds `ek=1`, `vn=65537` (instead of 3), `vs=105.1`, `sf=0x4` and `fv=76400.10`, and senders use `vs` to decide whether to send progress and artwork. We advertise `tp=UDP`, not `TCP,UDP`, because UDP is all we implement.
+- The device ID `1E2E5EB64A10` was generated on first run (locally administered MAC) and is stored in DataStore. It's both the Bonjour name prefix and the Apple-Challenge hardware address.
+- NsdManager registers on the TV's hostname `Android_3b9ff9d33efe4cfb836831a65f88a258.local`. On API 33+ we pin the registration to the default `Network`.
 - Bionic has no `pthread_cancel`, which rules out porting a current Shairport Sync. See `decision-engine.md`.
 - From Shairport `common.c`: the AES key in ANNOUNCE (`rsaaeskey`) is unwrapped with **RSA-OAEP (SHA-1)**, and the Apple-Challenge response is a **PKCS#1 v1.5** private-key signature.
 - ALAC is not a guaranteed MediaCodec codec on Android; it's only an OEM extra on some devices. Use our own decoder.

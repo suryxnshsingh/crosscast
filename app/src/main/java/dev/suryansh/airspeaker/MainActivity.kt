@@ -12,10 +12,12 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.ui.res.stringResource
+import androidx.compose.runtime.getValue
 import androidx.core.content.edit
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.suryansh.airspeaker.core.Logs
 import dev.suryansh.airspeaker.service.AirPlayReceiverService
+import dev.suryansh.airspeaker.settings.SettingsRepository
 import dev.suryansh.airspeaker.ui.AirSpeakerTheme
 import dev.suryansh.airspeaker.ui.IdleScreen
 
@@ -31,9 +33,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Logs.ui.i("MainActivity created")
         AirPlayReceiverService.start(this, reason = "app")
+        val settings = SettingsRepository.from(this)
         setContent {
+            val identity by settings.identity.collectAsStateWithLifecycle(initialValue = null)
             AirSpeakerTheme {
-                IdleScreen(friendlyName = stringResource(R.string.default_friendly_name))
+                IdleScreen(friendlyName = identity?.friendlyName ?: SettingsRepository.DEFAULT_FRIENDLY_NAME)
             }
         }
         askForPermissionsOnce()

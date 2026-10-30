@@ -58,6 +58,7 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.service)
+    implementation(libs.androidx.datastore.preferences)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
@@ -69,6 +70,7 @@ dependencies {
     debugImplementation(libs.compose.ui.test.manifest)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.androidx.test.junit)
     testImplementation(libs.robolectric)
     testImplementation(platform(libs.compose.bom))

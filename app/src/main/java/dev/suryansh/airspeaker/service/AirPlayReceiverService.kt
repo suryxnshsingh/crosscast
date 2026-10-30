@@ -16,7 +16,16 @@ import androidx.lifecycle.lifecycleScope
 import dev.suryansh.airspeaker.MainActivity
 import dev.suryansh.airspeaker.R
 import dev.suryansh.airspeaker.core.Logs
+import dev.suryansh.airspeaker.core.ReceiverIdentity
+import dev.suryansh.airspeaker.core.mdns.RaopAdvertiser
+import dev.suryansh.airspeaker.core.mdns.RaopService
+import dev.suryansh.airspeaker.core.mdns.RegistrationFailedException
+import dev.suryansh.airspeaker.core.net.LocalNetwork
 import dev.suryansh.airspeaker.core.net.networkChanges
+import dev.suryansh.airspeaker.settings.SettingsRepository
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
@@ -29,6 +38,7 @@ import kotlinx.coroutines.launch
  */
 class AirPlayReceiverService : LifecycleService() {
 
+    private lateinit var advertiser: RaopAdvertiser
     private var multicastLock: WifiManager.MulticastLock? = null
     private var streaming = false
 
@@ -44,10 +54,28 @@ class AirPlayReceiverService : LifecycleService() {
                 acquire()
             }
 
+        advertiser = RaopAdvertiser(this)
+        val settings = SettingsRepository.from(this)
         lifecycleScope.launch {
-            networkChanges(this@AirPlayReceiverService).collect { network ->
-                // Phase 3 re-registers the mDNS service here.
-                Logs.mdns.i("default network: ${network?.ipv4?.hostAddress ?: "offline"} (${network?.interfaceName})")
+            // Re-advertise whenever the network or the friendly name changes.
+            combine(networkChanges(this@AirPlayReceiverService), settings.identity, ::Pair)
+                .collectLatest { (network, identity) -> advertise(network, identity) }
+        }
+    }
+
+    private suspend fun advertise(network: LocalNetwork?, identity: ReceiverIdentity) {
+        Logs.mdns.i("default network: ${network?.ipv4?.hostAddress ?: "offline"} (${network?.interfaceName})")
+        if (network?.ipv4 == null) {
+            advertiser.withdraw()
+            return
+        }
+        while (true) {
+            try {
+                advertiser.advertise(identity, RaopService.RTSP_PORT, network.network)
+                return
+            } catch (e: RegistrationFailedException) {
+                Logs.mdns.e("mDNS registration failed; retrying in 10 s", e)
+                delay(10_000)
             }
         }
     }
@@ -60,6 +88,7 @@ class AirPlayReceiverService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        advertiser.close()
         multicastLock?.release()
         Logs.mdns.i("receiver service destroyed")
         super.onDestroy()
