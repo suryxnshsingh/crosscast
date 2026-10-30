@@ -3,6 +3,7 @@ package dev.suryansh.airspeaker.core.meta
 import dev.suryansh.airspeaker.core.dacp.DacpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.net.InetAddress
@@ -66,12 +67,21 @@ class MetadataParsingTest {
     fun `DACP service name and request`() {
         assertEquals("iTunes_Ctrl_A1B2C3D4E5F60718", DacpClient.serviceName("A1B2C3D4E5F60718"))
         assertEquals(
-            "http://192.168.29.20:3689/ctrl-int/1/nextitem",
-            DacpClient.requestUrl(InetAddress.getByName("192.168.29.20"), 3689, DacpClient.Command.Next),
+            "GET /ctrl-int/1/nextitem HTTP/1.1\r\nHost: 192.168.29.20:3689\r\nActive-Remote: 123\r\nConnection: close\r\n\r\n",
+            DacpClient.requestText(InetAddress.getByName("192.168.29.20"), 3689, "nextitem", "123"),
         )
-        assertEquals(
-            "http://[fe80:0:0:0:0:0:0:1]:3689/ctrl-int/1/playpause",
-            DacpClient.requestUrl(InetAddress.getByName("fe80::1"), 3689, DacpClient.Command.PlayPause),
-        )
+        // iPhones connect over IPv6 link-local; the zone id stays out of the Host header.
+        val scoped = java.net.Inet6Address.getByAddress(null, InetAddress.getByName("fe80::1").address, 7)
+        assertTrue(DacpClient.requestText(scoped, 3689, "playpause", "1").contains("Host: [fe80:0:0:0:0:0:0:1]:3689\r\n"))
+    }
+
+    @Test
+    fun `DACP response with and without Content-Length`() {
+        val r = DacpClient.readResponse("HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabcEXTRA".byteInputStream())
+        assertEquals(200, r.status)
+        assertEquals("abc", String(r.body))
+        val noContent = DacpClient.readResponse("HTTP/1.1 204 No Content\r\nDAAP-Server: iTunes\r\n\r\n".byteInputStream())
+        assertEquals(204, noContent.status)
+        assertEquals(0, noContent.body.size)
     }
 }

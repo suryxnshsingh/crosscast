@@ -39,6 +39,7 @@ object ReceiverState {
     /** Debug builds: closes the RTSP server to test the supervisor's restart. */
     @Volatile
     internal var debugKillServer: (() -> Unit)? = null
+    internal var debugDacp: (suspend (String) -> DacpClient.Response?)? = null
 
     /** Remote-controls the sender (the iPhone). Returns the HTTP status, or null if unavailable. */
     suspend fun sendRemote(command: DacpClient.Command): Int? = remote?.invoke(command)

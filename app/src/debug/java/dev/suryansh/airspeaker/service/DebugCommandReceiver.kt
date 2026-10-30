@@ -5,18 +5,33 @@ import android.content.Context
 import android.content.Intent
 import dev.suryansh.airspeaker.core.Logs
 import dev.suryansh.airspeaker.core.dacp.DacpClient
+import dev.suryansh.airspeaker.core.meta.Dmap
 import dev.suryansh.airspeaker.settings.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-/** Debug commands from adb: DACP commands to the current sender, or `kill_server` to test self-healing. */
+/** Debug commands from adb: DACP commands (or any DACP request) to the current sender, or `kill_server` to test self-healing. */
 class DebugCommandReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val name = intent.getStringExtra("command") ?: return
         val value = intent.getStringExtra("value")
         when (name) {
             "kill_server" -> return run { ReceiverState.debugKillServer?.invoke() }
+            "dacp" -> {
+                // Any DACP request, to probe what the sender supports: --es value "getspeakers"
+                val pending = goAsync()
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val r = ReceiverState.debugDacp?.invoke(value ?: "")
+                        val dmap = r?.body?.takeIf { it.isNotEmpty() }?.let { Dmap.parse(it) }
+                        Logs.meta.i("debug DACP $value → ${r?.status ?: "no sender"} ${dmap ?: ""}")
+                    } finally {
+                        pending.finish()
+                    }
+                }
+                return
+            }
             "set_name", "latency" -> {
                 val pending = goAsync()
                 CoroutineScope(Dispatchers.IO).launch {

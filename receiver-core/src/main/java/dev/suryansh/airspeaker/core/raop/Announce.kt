@@ -13,6 +13,8 @@ class Announce(
     val aesIv: ByteArray?,
     val minLatency: Int?,
     val maxLatency: Int?,
+    /** SDP `i=` (session information): the sender's device name, e.g. "Suryansh’s iPhone". */
+    val senderName: String? = null,
 ) {
     val encrypted: Boolean get() = aesKey != null && aesIv != null
     val framesPerPacket: Int get() = alac.frameLength
@@ -42,6 +44,8 @@ class Announce(
                 aesIv = iv,
                 minLatency = attrs["min-latency"]?.trim()?.toIntOrNull(),
                 maxLatency = attrs["max-latency"]?.trim()?.toIntOrNull(),
+                senderName = sdp.lineSequence().map { it.trim() }.firstOrNull { it.startsWith("i=") }
+                    ?.substring(2)?.trim()?.takeIf { it.isNotEmpty() },
             )
         }
 

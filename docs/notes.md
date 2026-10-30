@@ -129,3 +129,21 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
 - **Artwork:** continuous ("squircle") corners use the usual Bézier fit of iOS corners. While paused, the cover springs back to 84 % and its shadow drops, as in Apple Music.
 - **Artwork shadow:** a 64 px pre-blurred image scaled up, not an elevation shadow. Robolectric drew elevation shadows as a stray light strip under the artwork, so the screenshots didn't match the TV. Now they draw the same, the shadow is softer, and the GPU draws one image.
 - **Removed:** the accent colour taken from the cover (Palette). Apple's Now Playing is white on the cover's colours; system blue and green remain only for focus and switches in Settings.
+
+## What iOS (AirPlay/980.77.1) really does, seen on the TV on 2026-10-30
+
+- **Pause sends no FLUSH.** iOS keeps streaming at the full packet rate, sending digital silence, and sends a `progress` with the paused position, then the same position again on resume.
+  - The player now counts ¾ s of silence in what's heard (|sample| ≤ 8, −72 dBFS) as paused (`onSilent`).
+  - Sound coming back is `onHeard`, and the track clock takes the new `progress` from there.
+  - Verified: `silent for 750 ms` → `receiver Paused`, then Playing on resume.
+- **Skipping sends no FLUSH either.** The stream carries on, and the new track's metadata and `progress` arrive. iOS often sends a `progress` with stale values just before the right one.
+- **The sender's name is in the SDP:** `i=Suryansh’s iPhone`. iOS sends no `X-Apple-Client-Name` header.
+  - ANNOUNCE headers are only `Active-Remote`, `Content-Length`, `Content-Type`, `CSeq`, `DACP-ID` and `User-Agent: AirPlay/980.77.1`.
+  - The SDP is `o=AirTunes … IN IP6 fe80::…`, with `min-latency` 11025 and `max-latency` 88200.
+- **The iPhone connects over IPv6 link-local** (`fe80::…%wlan0`) for RTSP, RTP and DACP alike.
+  - Android's `URL`/`HttpURLConnection` rejects scoped literals ("Invalid host"), so every DACP command had failed. DACP is now raw HTTP/1.1 over a `Socket`.
+- **DACP on iOS supports only a few requests.**
+  - `getproperty?properties=dmcp.volume`, `getspeakers` and `playstatusupdate` all return 400.
+  - `setproperty?dmcp.device-volume=…` returns 200 but changes nothing: no volume came back, and the slider didn't move.
+  - So a classic receiver can't set the iPhone's slider, and can't ask whether it is playing.
+- **Volume at the start of a session:** new sessions started at `volume -20.0` (14:09:59 and 14:10:08). A session iOS resumed after the receiver restarted (same session ID) came back at the level set before (−3.94).

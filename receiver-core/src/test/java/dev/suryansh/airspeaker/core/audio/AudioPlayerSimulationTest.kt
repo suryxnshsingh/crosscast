@@ -57,7 +57,14 @@ class AudioPlayerSimulationTest {
         override fun close() = Unit
     }
 
-    private class Result(val maxErrorMs: Double, val meanAbsErrorMs: Double, val player: AudioPlayer, val sink: SimSink)
+    private class Result(
+        val maxErrorMs: Double,
+        val meanAbsErrorMs: Double,
+        val player: AudioPlayer,
+        val sink: SimSink,
+        /** (event, local time in s, sender time in s it refers to) for onHeard / onSilent. */
+        val events: List<Triple<String, Double, Double>>,
+    )
 
     private fun simulate(
         minutes: Int,
@@ -66,6 +73,8 @@ class AudioPlayerSimulationTest {
         lossRate: Double = 0.001,
         timestampJitterNs: Long = 1_500_000,
         seed: Int = 1,
+        /** Whether the sender's packet at this many seconds into the stream has sound. */
+        audibleAt: (Double) -> Boolean = { false },
     ): Result {
         val random = Random(seed)
         val t = SimTime()
@@ -85,11 +94,18 @@ class AudioPlayerSimulationTest {
         val clock = ClockSync(rate)
         val buffer = JitterBuffer(fpp, time = { t.now })
         val sink = SimSink(t, rate * (1 + dacPpm * 1e-6), latencyNs = 50_000_000, jitterNs = timestampJitterNs, random = random)
+        val events = mutableListOf<Triple<String, Double, Double>>()
         val player = AudioPlayer(
             buffer, clock, fpp, rate,
             listener = object : AudioPlayer.Listener {
                 override fun onOutputStarted() = Unit
                 override fun onOutputStopped() = Unit
+                override fun onHeard(rtp: Int, atNs: Long) {
+                    events += Triple("heard", atNs / 1e9, (rtp - rtp0).toDouble() / rate)
+                }
+                override fun onSilent(sinceNs: Long) {
+                    events += Triple("silent", sinceNs / 1e9, Double.NaN)
+                }
             },
             openSink = { sink },
             time = { t.now },
@@ -109,7 +125,8 @@ class AudioPlayerSimulationTest {
             }
         }
 
-        val pcm = ShortArray(fpp * 2)
+        val silence = ShortArray(fpp * 2)
+        val sound = ShortArray(fpp * 2) { if (it % 2 == 0) 3000 else -3000 }
         val endNs = minutes * 60_000_000_000L
         t.now = 10_000_000 // the first packet has arrived
         var steps = 0L
@@ -122,6 +139,7 @@ class AudioPlayerSimulationTest {
                 val frame = rtp0 + nextPacket * fpp
                 val arrival = localTime(sendTime(frame)) + 1_000_000 + random.nextLong(7_000_000)
                 if (arrival > t.now) break
+                val pcm = if (audibleAt((frame - rtp0).toDouble() / rate)) sound else silence
                 if (random.nextDouble() >= lossRate) buffer.put((nextPacket and 0xFFFF).toInt(), frame.toInt(), pcm, fpp)
                 nextPacket++
             }
@@ -149,7 +167,7 @@ class AudioPlayerSimulationTest {
         }
         println("ppm %+.0f/%+.0f loss %.3f: max %.2f ms, mean %.2f ms, +%d/-%d frames, %d missing, %d realigned".format(
             senderPpm, dacPpm, lossRate, maxErr, sumErr / count, player.framesInserted, player.framesDropped, player.packetsMissing, player.realignments))
-        return Result(maxErr, sumErr / count, player, sink)
+        return Result(maxErr, sumErr / count, player, sink, events)
     }
 
     @Test
@@ -171,6 +189,22 @@ class AudioPlayerSimulationTest {
         assertTrue("mean error ${r.meanAbsErrorMs} ms", r.meanAbsErrorMs < 2.0)
         assertTrue(r.player.framesInserted > r.player.framesDropped)
         assertEquals(0, r.player.realignments)
+    }
+
+    @Test
+    fun `a pause streamed as silence is reported, and so is the sound coming back`() {
+        // Like iOS: sound for 20 s, then a pause sent as 10 s of digital silence, then sound again.
+        val r = simulate(minutes = 1, senderPpm = 0.0, dacPpm = 0.0, lossRate = 0.0, audibleAt = { it < 20 || it >= 30 })
+        assertEquals(listOf("heard", "silent", "heard"), r.events.map { it.first })
+        val (_, heardAt, heardFrom) = r.events[0]
+        val (_, silentAt, _) = r.events[1]
+        val (_, backAt, backFrom) = r.events[2]
+        // The sender started at 0.01 s and plays 2 s behind; each event refers to what is heard then.
+        assertEquals(0.0, heardFrom, 0.01)
+        assertEquals(2.01, heardAt, 0.05)
+        assertEquals(22.01, silentAt, 0.05) // when the silence starts being heard
+        assertEquals(30.0, backFrom, 0.01)
+        assertEquals(32.01, backAt, 0.05)
     }
 
     @Test

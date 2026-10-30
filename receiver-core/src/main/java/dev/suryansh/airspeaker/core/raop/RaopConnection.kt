@@ -24,8 +24,11 @@ interface RaopHost {
     fun onSenderInfo(connection: RaopConnection, name: String?)
     fun onOutputChanged(connection: RaopConnection, playing: Boolean)
 
-    /** Frame [rtp] is heard at [atNs] ([System.nanoTime]): audio is audible from here. */
+    /** Frame [rtp] is heard at [atNs] ([System.nanoTime]): sound is audible from here. */
     fun onHeard(connection: RaopConnection, rtp: Int, atNs: Long) = Unit
+
+    /** Only silence has been heard since [sinceNs]: how iOS pauses (it keeps streaming). */
+    fun onSilent(connection: RaopConnection, sinceNs: Long) = Unit
     fun onPaused(connection: RaopConnection)
     fun onVolume(connection: RaopConnection, volume: Double)
     fun currentVolume(): Double?
@@ -146,7 +149,9 @@ class RaopConnection(private val socket: Socket, private val host: RaopHost) {
                 host.claim(this)
                 endSession()
                 announce = parsed
-                host.onSenderInfo(this, req.header("X-Apple-Client-Name"))
+                Logs.rtsp.d("ANNOUNCE headers: " + req.headers.filterKeys { !it.equals("Apple-Challenge", true) }.entries.joinToString())
+                Logs.rtsp.d("ANNOUNCE SDP: " + req.bodyText.lineSequence().filter { it.isNotBlank() && !it.startsWith("a=rsaaeskey") && !it.startsWith("a=aesiv") }.joinToString(" | "))
+                host.onSenderInfo(this, req.header("X-Apple-Client-Name") ?: parsed.senderName)
                 Logs.rtsp.i("ANNOUNCE ${parsed.codec} ${parsed.framesPerPacket} frames/packet, encrypted=${parsed.encrypted}, AirPlay/$airPlayVersion")
             }
 
@@ -164,6 +169,7 @@ class RaopConnection(private val socket: Socket, private val host: RaopHost) {
                         override fun onOutputStarted() = host.onOutputChanged(this@RaopConnection, true)
                         override fun onOutputStopped() = host.onOutputChanged(this@RaopConnection, false)
                         override fun onHeard(rtp: Int, atNs: Long) = host.onHeard(this@RaopConnection, rtp, atNs)
+                        override fun onSilent(sinceNs: Long) = host.onSilent(this@RaopConnection, sinceNs)
                     },
                     decodedTap = host.decodedTap(),
                 )

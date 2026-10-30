@@ -144,13 +144,15 @@ Nothing new is built for this phase. The Watch controls the iPhone, and the iPho
    - a background made from the cover's colours
    - the HUDs in the top-right corner
 2. *(you)* Play from the iPhone. Within a few seconds the background drifts slowly through the cover's colours, and the TV shows no stutter.
-3. *(you)* Pause on the iPhone or the Watch:
-   - the progress bar stops at once
-   - about 1 s later the artwork settles back and "Paused" replaces the sender name
+3. *(you)* Pause on the iPhone or the Watch. iOS keeps streaming silence, so:
+   - about ¾ s after the sound stops, the progress bar stops
+   - about 1 s after that, the artwork settles back and "Paused" replaces the sender name
    - when you resume, the bar carries on from the same time
-4. *(you)* Skip a track: the artwork doesn't shrink, the bar holds for about 2 s, then starts from 0:00 as the new song is heard.
-5. *(you)* Seek on the iPhone: the bar jumps to the new position once the audio does.
-6. *(you)* Disconnect and reconnect from the iPhone:
+4. *(you)* Skip a track: the new song starts from 0:00 as it's heard. A silent gap between tracks may briefly freeze the bar.
+5. *(you)* The top line shows the iPhone's name (from the SDP `i=` line).
+6. *(you)* On the TV remote, OK pauses or plays the iPhone, and ◀ ▶ skip (DACP over IPv6 link-local).
+7. *(you)* Seek on the iPhone: the bar jumps to the new position once the audio does.
+8. *(you)* Disconnect and reconnect from the iPhone:
    - the volume comes back where you left it, without turning it up
    - half volume on the iPhone sounds about half as loud, not near silent
-7. *(TV)* `logcat -s audio meta`: each session logs `volume …`, and `in sync` lines appear when audio becomes audible.
+9. *(TV)* `logcat -s audio meta`: each session logs `volume …`, and `in sync` and `silent for 750 ms` lines appear as audio starts and pauses.

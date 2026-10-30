@@ -32,8 +32,11 @@ class AudioPlayer(
         fun onOutputStarted()
         fun onOutputStopped()
 
-        /** Frame [rtp] is heard at [atNs] ([System.nanoTime]): audible playback (re)starts in sync. */
+        /** Frame [rtp], the first with sound after silence or a new start, is heard at [atNs] ([System.nanoTime]). */
         fun onHeard(rtp: Int, atNs: Long) = Unit
+
+        /** What is heard has been silent since [sinceNs]: iOS pauses by streaming silence, not by stopping. */
+        fun onSilent(sinceNs: Long) = Unit
     }
 
     @Volatile private var running = true
@@ -51,6 +54,8 @@ class AudioPlayer(
     private var missingSinceNs = 0L
     private var smoothedErrNs = 0.0
     private var outOfSyncCount = 0
+    private var audible = false
+    private var silentSinceNs = 0L
 
     // Stats for the periodic log line, and for tests.
     var framesInserted = 0L
@@ -118,6 +123,8 @@ class AudioPlayer(
         playing = true
         missingSinceNs = 0
         outOfSyncCount = 0
+        audible = false
+        silentSinceNs = 0
         Logs.audio.i("output opened")
         listener.onOutputStarted()
         return true
@@ -147,7 +154,8 @@ class AudioPlayer(
             aligned = true
             smoothedErrNs = errNs.toDouble()
             Logs.audio.i("in sync: error ${errNs / 1000} µs, latency ${clock.latencyFrames} frames")
-            listener.onHeard(nextRtp, presented)
+            audible = false // the next packet with sound reports onHeard
+            silentSinceNs = 0
         } else if (abs(errNs) > RESYNC_THRESHOLD_NS) {
             // One bad timestamp is noise; a sustained error means the timeline really moved.
             if (++outOfSyncCount >= RESYNC_AFTER_PACKETS) {
@@ -179,6 +187,7 @@ class AudioPlayer(
             }
         } else {
             missingSinceNs = 0
+            trackAudibility(frames, due)
         }
 
         var out = frames
@@ -195,6 +204,31 @@ class AudioPlayer(
         write(pcm, out)
         advance(frames)
         logStats(errNs)
+    }
+
+    /** Reports when what's heard turns audible, and when it has stayed silent for [SILENCE_PAUSE_NS]. */
+    private fun trackAudibility(frames: Int, dueNs: Long) {
+        var silent = true
+        for (i in 0 until frames * 2) {
+            if (abs(pcm[i].toInt()) > SILENCE_LEVEL) {
+                silent = false
+                break
+            }
+        }
+        if (!silent) {
+            silentSinceNs = 0
+            if (!audible) {
+                audible = true
+                listener.onHeard(nextRtp, dueNs)
+            }
+        } else {
+            if (silentSinceNs == 0L) silentSinceNs = dueNs
+            if (audible && dueNs - silentSinceNs >= SILENCE_PAUSE_NS) {
+                audible = false
+                Logs.audio.i("silent for ${SILENCE_PAUSE_NS / 1_000_000} ms")
+                listener.onSilent(silentSinceNs)
+            }
+        }
     }
 
     private fun advance(frames: Int) {
@@ -255,5 +289,9 @@ class AudioPlayer(
         const val IDLE_STOP_NS = 3_000_000_000L
         const val STATS_INTERVAL_NS = 10_000_000_000L
         const val STALL_BACKOFF_MS = 5L
+
+        /** −72 dBFS: below this a packet counts as silence (iOS streams digital silence while paused). */
+        const val SILENCE_LEVEL = 8
+        const val SILENCE_PAUSE_NS = 750_000_000L
     }
 }

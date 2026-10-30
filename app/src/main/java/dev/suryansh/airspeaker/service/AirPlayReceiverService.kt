@@ -95,6 +95,7 @@ class AirPlayReceiverService : LifecycleService() {
         engine = e
         ReceiverState.remote = e::sendRemote
         ReceiverState.debugKillServer = e::debugKillServer
+        ReceiverState.debugDacp = e::dacpRequest
         stateJob?.cancel()
         stateJob = lifecycleScope.launch { e.state.collect { ReceiverState.publish(it) } }
         val port = withContext(Dispatchers.IO) { e.start(RaopService.RTSP_PORT) }
@@ -154,6 +155,7 @@ class AirPlayReceiverService : LifecycleService() {
     override fun onDestroy() {
         ReceiverState.remote = null
         ReceiverState.debugKillServer = null
+        ReceiverState.debugDacp = null
         ReceiverState.updateStatus { it.copy(running = false, registered = false) }
         engine?.stop()
         advertiser.close()

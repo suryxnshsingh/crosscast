@@ -6,7 +6,7 @@ package dev.suryansh.airspeaker.core.meta
  * `mlit` hold further items.
  */
 object Dmap {
-    private val CONTAINERS = setOf("mlit", "mlcl", "mcon", "msrv", "cmst", "mdcl")
+    private val CONTAINERS = setOf("mlit", "mlcl", "mcon", "msrv", "cmst", "mdcl", "cmgt", "casp")
     private val STRINGS = setOf("minm", "asar", "asal", "asaa", "asgn", "ascm", "ascp", "assn", "assa", "assl")
 
     /** Flattens the body into tag → value (String for text tags, Long for numbers, ByteArray otherwise). */

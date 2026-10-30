@@ -84,14 +84,16 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
      * Asks the current sender to play/pause, skip, etc. Returns the HTTP status, or null when no
      * sender is playing or it doesn't offer remote control.
      */
-    suspend fun sendRemote(command: DacpClient.Command): Int? {
-        val client = synchronized(this) {
-            val connection = active ?: return null
-            val id = connection.dacpId ?: return null
-            val token = connection.activeRemote ?: return null
-            dacp?.takeIf { it.dacpId == id } ?: DacpClient(context, id, token, connection.senderAddress).also { dacp = it }
-        }
-        return client.send(command)
+    suspend fun sendRemote(command: DacpClient.Command): Int? = dacpClient()?.send(command)
+
+    /** Debug: any DACP request to the current sender, e.g. `getproperty?properties=dmcp.volume`. */
+    suspend fun dacpRequest(path: String): DacpClient.Response? = dacpClient()?.request(path)
+
+    private fun dacpClient(): DacpClient? = synchronized(this) {
+        val connection = active ?: return null
+        val id = connection.dacpId ?: return null
+        val token = connection.activeRemote ?: return null
+        dacp?.takeIf { it.dacpId == id } ?: DacpClient(context, id, token, connection.senderAddress).also { dacp = it }
     }
 
     // ---- RaopHost ----------------------------------------------------------------------------
@@ -125,8 +127,8 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
     }
 
     /**
-     * Status follows what is heard: Buffering once audio arrives, Playing from the first audible
-     * frame, Paused as soon as audio stops (FLUSH for a pause or a skip, or the sender going quiet).
+     * Status follows what is heard: Buffering once audio arrives, Playing from the first frame with
+     * sound, Paused once it stops: silence (iOS pauses by streaming silence), a FLUSH, or no audio.
      */
     override fun onOutputChanged(connection: RaopConnection, playing: Boolean) {
         if (!isActive(connection)) return
@@ -141,10 +143,16 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
 
     override fun onHeard(connection: RaopConnection, rtp: Int, atNs: Long) {
         if (!isActive(connection)) return
-        val atMs = SystemClock.elapsedRealtime() + (atNs - System.nanoTime()) / 1_000_000
-        val position = synchronized(trackClock) { trackClock.onHeard(rtp, atMs) }
+        val position = synchronized(trackClock) { trackClock.onHeard(rtp, elapsedMs(atNs)) }
         _state.update { it.withPosition(position).copy(status = NowPlayingState.Status.Playing) }
     }
+
+    override fun onSilent(connection: RaopConnection, sinceNs: Long) {
+        if (isActive(connection)) stopTrackClock(elapsedMs(sinceNs))
+    }
+
+    /** [System.nanoTime] → [SystemClock.elapsedRealtime], the clock the UI extrapolates on. */
+    private fun elapsedMs(nanoTime: Long) = SystemClock.elapsedRealtime() + (nanoTime - System.nanoTime()) / 1_000_000
 
     override fun onRecord(connection: RaopConnection) {
         if (isActive(connection)) onSessionStarted()
@@ -154,8 +162,8 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
         if (isActive(connection)) stopTrackClock()
     }
 
-    private fun stopTrackClock() {
-        val position = synchronized(trackClock) { trackClock.onStopped(SystemClock.elapsedRealtime()) }
+    private fun stopTrackClock(atMs: Long = SystemClock.elapsedRealtime()) {
+        val position = synchronized(trackClock) { trackClock.onStopped(atMs) }
         _state.update {
             if (it.status == NowPlayingState.Status.Idle) it
             else it.withPosition(position).copy(status = NowPlayingState.Status.Paused)

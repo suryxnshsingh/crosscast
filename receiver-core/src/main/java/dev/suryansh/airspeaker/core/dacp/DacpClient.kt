@@ -8,13 +8,18 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.net.HttpURLConnection
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.net.InetAddress
-import java.net.URL
+import java.net.InetSocketAddress
+import java.net.Socket
 
 /**
  * Remote control of the sender (play/pause, next, previous) over DACP. The sender advertises
  * `_dacp._tcp` as `iTunes_Ctrl_<DACP-ID>`; requests must carry its `Active-Remote` token.
+ *
+ * Requests are plain HTTP/1.1 written to a socket: iPhones connect from IPv6 link-local
+ * addresses (`fe80::…%wlan0`), which a socket handles but Android's URL parser rejects.
  */
 class DacpClient(
     context: Context,
@@ -33,25 +38,32 @@ class DacpClient(
         VolumeDown("volumedown"),
     }
 
-    /** Sends [command]; returns the HTTP status, or null if the sender's DACP service can't be found. */
-    suspend fun send(command: Command): Int? {
+    class Response(val status: Int, val body: ByteArray)
+
+    /** Sends [command]; returns the HTTP status, or null if the sender's DACP service can't be reached. */
+    suspend fun send(command: Command): Int? = request(command.path)?.status
+
+    /** `GET /ctrl-int/1/<path>`, e.g. `playpause` or `getproperty?properties=dmcp.volume`. */
+    suspend fun request(path: String): Response? {
         val p = port ?: discoverPort()?.also { port = it } ?: run {
             Logs.meta.w("DACP: no ${serviceName(dacpId)} on the network")
             return null
         }
         return withContext(Dispatchers.IO) {
-            val connection = URL(requestUrl(sender, p, command)).openConnection() as HttpURLConnection
             try {
-                connection.connectTimeout = 2_000
-                connection.readTimeout = 2_000
-                connection.setRequestProperty("Active-Remote", activeRemote)
-                connection.responseCode.also { Logs.meta.i("DACP ${command.path} → $it") }
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress(sender, p), TIMEOUT_MS)
+                    socket.soTimeout = TIMEOUT_MS
+                    socket.getOutputStream().apply {
+                        write(requestText(sender, p, path, activeRemote).toByteArray(Charsets.US_ASCII))
+                        flush()
+                    }
+                    readResponse(socket.getInputStream())
+                }.also { Logs.meta.i("DACP $path → ${it.status} (${it.body.size} bytes)") }
             } catch (e: Exception) {
-                Logs.meta.w("DACP ${command.path} failed: ${e.message}")
+                Logs.meta.w("DACP $path failed: ${e.message}")
                 port = null // the sender may have moved; rediscover next time
                 null
-            } finally {
-                connection.disconnect()
             }
         }
     }
@@ -94,10 +106,59 @@ class DacpClient(
 
         fun serviceName(dacpId: String) = "iTunes_Ctrl_$dacpId"
 
-        fun requestUrl(host: InetAddress, port: Int, command: Command): String {
-            // IPv6 literals go in brackets, with any zone id's '%' escaped.
-            val h = host.hostAddress?.let { if (':' in it) "[${it.replace("%", "%25")}]" else it }
-            return "http://$h:$port/ctrl-int/1/${command.path}"
+        private const val TIMEOUT_MS = 3_000
+
+        fun requestText(host: InetAddress, port: Int, path: String, activeRemote: String): String {
+            // IPv6 literals go in brackets; a zone id (%wlan0) means nothing to the other end.
+            val h = host.hostAddress!!.substringBefore('%').let { if (':' in it) "[$it]" else it }
+            return "GET /ctrl-int/1/$path HTTP/1.1\r\n" +
+                "Host: $h:$port\r\n" +
+                "Active-Remote: $activeRemote\r\n" +
+                "Connection: close\r\n\r\n"
+        }
+
+        /** Status line, headers, then a Content-Length body (or everything until the sender closes). */
+        fun readResponse(input: InputStream): Response {
+            fun line(): String? {
+                val out = ByteArrayOutputStream()
+                while (true) {
+                    val b = input.read()
+                    if (b < 0) return if (out.size() == 0) null else out.toString(Charsets.ISO_8859_1.name())
+                    if (b == '\n'.code) return out.toString(Charsets.ISO_8859_1.name()).trimEnd('\r')
+                    out.write(b)
+                }
+            }
+            val status = line()?.split(' ')?.getOrNull(1)?.toIntOrNull() ?: throw java.io.IOException("no HTTP status line")
+            var length = -1
+            while (true) {
+                val header = line() ?: break
+                if (header.isEmpty()) break
+                if (header.substringBefore(':').trim().equals("Content-Length", ignoreCase = true)) {
+                    length = header.substringAfter(':').trim().toIntOrNull() ?: -1
+                }
+            }
+            val body = when {
+                status == 204 || status == 304 -> ByteArray(0)
+                length >= 0 -> input.readNBytes(length)
+                else -> readUntilClosed(input)
+            }
+            return Response(status, body)
+        }
+
+        /** A sender that keeps the connection open anyway just ends the body with a read timeout. */
+        private fun readUntilClosed(input: InputStream): ByteArray {
+            val out = ByteArrayOutputStream()
+            val buffer = ByteArray(4096)
+            try {
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    out.write(buffer, 0, n)
+                }
+            } catch (e: java.net.SocketTimeoutException) {
+                // keep what arrived
+            }
+            return out.toByteArray()
         }
     }
 }
