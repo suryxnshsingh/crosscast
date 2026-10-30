@@ -135,3 +135,22 @@ Nothing new is built for this phase. The Watch controls the iPhone, and the iPho
 2. *(you)* Changes made on the Watch show up on the TV exactly like changes made on the iPhone (`logcat -s rtsp meta audio`).
 3. *(you)* Switch the iPhone output to headphones (TV goes to the clock, then back to the previous screen after the timeout), then back to Room Speaker (it plays again with no app restart).
 4. *(you)* It feels like an Apple TV used as a speaker. Anything that doesn't goes in docs/notes.md.
+
+## Apple-style Now Playing, pause and volume fixes (after Phase 8)
+
+1. *(Mac)* `./gradlew test :app:verifyRoborazziDebug` passes. The screenshots in `app/src/test/screenshots` show:
+   - Inter type
+   - continuous-corner artwork
+   - a background made from the cover's colours
+   - the HUDs in the top-right corner
+2. *(you)* Play from the iPhone. Within a few seconds the background drifts slowly through the cover's colours, and the TV shows no stutter.
+3. *(you)* Pause on the iPhone or the Watch:
+   - the progress bar stops at once
+   - about 1 s later the artwork settles back and "Paused" replaces the sender name
+   - when you resume, the bar carries on from the same time
+4. *(you)* Skip a track: the artwork doesn't shrink, the bar holds for about 2 s, then starts from 0:00 as the new song is heard.
+5. *(you)* Seek on the iPhone: the bar jumps to the new position once the audio does.
+6. *(you)* Disconnect and reconnect from the iPhone:
+   - the volume comes back where you left it, without turning it up
+   - half volume on the iPhone sounds about half as loud, not near silent
+7. *(TV)* `logcat -s audio meta`: each session logs `volume …`, and `in sync` lines appear when audio becomes audible.

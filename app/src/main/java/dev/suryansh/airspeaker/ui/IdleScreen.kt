@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,7 +22,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
 import java.time.Instant
@@ -63,14 +64,14 @@ fun IdleScreen(
             Text(
                 text = timeText,
                 color = AirSpeakerColors.TextPrimary.copy(alpha = 0.75f),
-                fontSize = 120.sp,
+                fontSize = 128.sp,
                 fontWeight = FontWeight.Light,
-                style = TextStyle(fontFeatureSettings = "tnum"),
+                style = TextStyle(fontFamily = InterDisplay, fontFeatureSettings = "tnum", letterSpacing = (-0.02).em),
             )
-            Text(dateText, color = AirSpeakerColors.TextSecondary, fontSize = 24.sp)
+            Text(dateText, color = AirSpeakerColors.TextSecondary, fontSize = 24.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(48.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(8.dp).background(AirSpeakerColors.Accent.copy(alpha = 0.8f), CircleShape))
+                Icon(Glyphs.AirPlayAudio, contentDescription = null, tint = AirSpeakerColors.TextSecondary.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(10.dp))
                 Text("$friendlyName · Ready for AirPlay", color = AirSpeakerColors.TextSecondary.copy(alpha = 0.5f), fontSize = 16.sp)
             }

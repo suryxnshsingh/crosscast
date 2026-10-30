@@ -23,6 +23,9 @@ interface RaopHost {
     fun release(connection: RaopConnection)
     fun onSenderInfo(connection: RaopConnection, name: String?)
     fun onOutputChanged(connection: RaopConnection, playing: Boolean)
+
+    /** Frame [rtp] is heard at [atNs] ([System.nanoTime]): audio is audible from here. */
+    fun onHeard(connection: RaopConnection, rtp: Int, atNs: Long) = Unit
     fun onPaused(connection: RaopConnection)
     fun onVolume(connection: RaopConnection, volume: Double)
     fun currentVolume(): Double?
@@ -160,6 +163,7 @@ class RaopConnection(private val socket: Socket, private val host: RaopHost) {
                     listener = object : AudioPlayer.Listener {
                         override fun onOutputStarted() = host.onOutputChanged(this@RaopConnection, true)
                         override fun onOutputStopped() = host.onOutputChanged(this@RaopConnection, false)
+                        override fun onHeard(rtp: Int, atNs: Long) = host.onHeard(this@RaopConnection, rtp, atNs)
                     },
                     decodedTap = host.decodedTap(),
                 )

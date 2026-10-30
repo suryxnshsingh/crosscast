@@ -74,10 +74,10 @@ class ClockAndBufferTest {
     }
 
     @Test
-    fun `volume maps the AirPlay slider onto 45 dB of gain`() {
+    fun `volume applies the AirPlay slider as 30 dB of gain`() {
         assertEquals(1f, Volume.gain(0.0), 1e-6f)
         assertEquals(0f, Volume.gain(Volume.MUTE), 0f)
-        assertEquals(0.0056f, Volume.gain(-30.0), 0.0001f) // -45 dB
-        assertEquals(0.0750f, Volume.gain(-15.0), 0.0001f) // -22.5 dB
+        assertEquals(0.0316f, Volume.gain(-30.0), 0.0001f) // -30 dB
+        assertEquals(0.1778f, Volume.gain(-15.0), 0.0001f) // -15 dB
     }
 }

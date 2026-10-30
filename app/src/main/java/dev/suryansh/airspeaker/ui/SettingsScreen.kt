@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ListItem
 import androidx.tv.material3.Switch
+import androidx.tv.material3.SwitchDefaults
 import androidx.tv.material3.Text
 import dev.suryansh.airspeaker.service.ReceiverStatus
 import java.time.Instant
@@ -122,7 +123,7 @@ private fun StatusPanel(status: ReceiverStatus, problems: List<String>, name: St
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             val ok = status.running && status.registered
-            Box(Modifier.size(10.dp).background(if (ok) Color(0xFF4CD787) else Color(0xFFFF6B5E), CircleShape))
+            Box(Modifier.size(10.dp).background(if (ok) Color(0xFF30D158) else Color(0xFFFF453A), CircleShape))
             Spacer(Modifier.width(10.dp))
             Text(
                 when {
@@ -184,7 +185,21 @@ private fun ToggleItem(title: String, subtitle: String, checked: Boolean, onChan
         onClick = { onChange(!checked) },
         headlineContent = { Text(title) },
         supportingContent = { Text(subtitle) },
-        trailingContent = { Switch(checked = checked, onCheckedChange = null) },
+        trailingContent = {
+            Switch(
+                checked = checked,
+                onCheckedChange = null,
+                // iOS switches: system green when on, graphite when off, always a white thumb.
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = Color(0xFF30D158),
+                    checkedBorderColor = Color.Transparent,
+                    uncheckedThumbColor = Color.White,
+                    uncheckedTrackColor = Color(0xFF39393D),
+                    uncheckedBorderColor = Color.Transparent,
+                ),
+            )
+        },
     )
 }
 

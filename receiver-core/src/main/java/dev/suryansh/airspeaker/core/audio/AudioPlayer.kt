@@ -31,6 +31,9 @@ class AudioPlayer(
     interface Listener {
         fun onOutputStarted()
         fun onOutputStopped()
+
+        /** Frame [rtp] is heard at [atNs] ([System.nanoTime]): audible playback (re)starts in sync. */
+        fun onHeard(rtp: Int, atNs: Long) = Unit
     }
 
     @Volatile private var running = true
@@ -144,6 +147,7 @@ class AudioPlayer(
             aligned = true
             smoothedErrNs = errNs.toDouble()
             Logs.audio.i("in sync: error ${errNs / 1000} µs, latency ${clock.latencyFrames} frames")
+            listener.onHeard(nextRtp, presented)
         } else if (abs(errNs) > RESYNC_THRESHOLD_NS) {
             // One bad timestamp is noise; a sustained error means the timeline really moved.
             if (++outOfSyncCount >= RESYNC_AFTER_PACKETS) {

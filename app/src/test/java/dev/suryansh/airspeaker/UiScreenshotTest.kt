@@ -11,6 +11,8 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import dev.suryansh.airspeaker.core.NowPlayingState
 import dev.suryansh.airspeaker.core.NowPlayingState.Status
 import dev.suryansh.airspeaker.ui.AirSpeakerTheme
+import dev.suryansh.airspeaker.ui.Glyphs
+import dev.suryansh.airspeaker.ui.RemoteToast
 import dev.suryansh.airspeaker.ui.IdleScreen
 import dev.suryansh.airspeaker.service.ReceiverStatus
 import dev.suryansh.airspeaker.ui.NowPlayingScreen
@@ -58,7 +60,7 @@ class UiScreenshotTest {
     fun volumeOverlay() = capture("now_playing_volume") { NowPlayingScreen(playing, showVolume = true, motion = false) }
 
     @Test
-    fun remoteToast() = capture("now_playing_toast") { NowPlayingScreen(playing, toast = "Next track", motion = false) }
+    fun remoteToast() = capture("now_playing_toast") { NowPlayingScreen(playing, toast = RemoteToast("Next", Glyphs.Forward), motion = false) }
 
     @Test
     fun idleClock() = capture("idle_clock") {

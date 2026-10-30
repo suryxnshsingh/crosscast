@@ -4,8 +4,11 @@ import android.os.SystemClock
 import dev.suryansh.airspeaker.core.Logs
 import dev.suryansh.airspeaker.core.NowPlayingState
 
-/** Turns SET_PARAMETER bodies into [NowPlayingState] updates. */
-class MetadataHandler(private val update: ((NowPlayingState) -> NowPlayingState) -> Unit) {
+/** Turns SET_PARAMETER bodies into [NowPlayingState] updates; track progress goes to [onProgress]. */
+class MetadataHandler(
+    private val update: ((NowPlayingState) -> NowPlayingState) -> Unit,
+    private val onProgress: (Progress) -> Unit,
+) {
     private var lastArtworkAtMs = 0L
 
     fun handle(contentType: String?, body: ByteArray) {
@@ -40,13 +43,7 @@ class MetadataHandler(private val update: ((NowPlayingState) -> NowPlayingState)
             if (line.substringBefore(':').trim() != "progress") continue
             val progress = Progress.parse(line.substringAfter(':')) ?: continue
             Logs.meta.i("progress ${clock(progress.positionMs)} / ${clock(progress.durationMs)}")
-            update {
-                it.copy(
-                    positionMs = progress.positionMs,
-                    durationMs = progress.durationMs,
-                    positionAtElapsedMs = SystemClock.elapsedRealtime(),
-                )
-            }
+            onProgress(progress)
         }
     }
 

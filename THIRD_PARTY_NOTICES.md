@@ -21,11 +21,15 @@ Copyright (c) 2011–2013 James Laird; (c) 2014–2026 Mike Brady. MIT licence:
 >
 > THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+## Fonts
+
+The Inter typeface (Inter and Inter Display, in `app/src/main/res/font`) is Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter), used under the SIL Open Font License 1.1. The full licence is in [`licenses/Inter-OFL-1.1.txt`](licenses/Inter-OFL-1.1.txt).
+
 ## Libraries
 
 | Library | Licence |
 |---|---|
-| AndroidX (Core, Activity, Lifecycle, Compose, Compose for TV, Palette, DataStore) | Apache 2.0 |
+| AndroidX (Core, Activity, Lifecycle, Compose, Compose for TV, DataStore) | Apache 2.0 |
 | Kotlin, kotlinx.coroutines | Apache 2.0 |
 | Timber | Apache 2.0 |
 | Tests only: JUnit (EPL 1.0), Robolectric (MIT), Roborazzi (Apache 2.0) | — |

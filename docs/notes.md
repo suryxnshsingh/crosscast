@@ -106,3 +106,25 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
 - 2026-10-30: the user streamed from their iPhone and reported that everything works as intended. The TV woke from sleep and played through HDMI, which means encrypted ALAC from iOS also works on the device.
 - **Restart:** after a TV restart, with the app left unopened, it still worked. `BOOT_COMPLETED` starts the service and the `appops` grants survive the restart.
 - **Wireless debugging:** it switched itself off overnight (or with the restart). The receiver doesn't need it.
+
+## Apple-style UI, pause and volume (after Phase 8)
+
+- **Progress kept moving after a pause.** The UI waited 2.5 s before it believed a pause (to ride out track skips), and until then it extrapolated the position on the wall clock.
+  - The position now comes from the audio actually heard. `progress` names the RTP time the track starts at. When the player gets in sync, it reports which RTP frame is heard and when (`onHeard`).
+  - Position = (heard frame − track start) / 44100. It moves only while audio is heard and freezes the instant a FLUSH arrives (`TrackClock`, unit-tested).
+  - This also fixes the bar running ~2 s ahead: `progress` arrives when the sender *sends* a frame, about 2 s before we play it.
+- **New `Buffering` status:** audio is arriving but not yet due.
+  - A skip is FLUSH → Paused for a moment → Buffering for about 2 s → Playing. A pause is FLUSH → Paused until resumed.
+  - The UI waits 1.2 s before it shows a pause, so skips don't make the artwork shrink.
+- **Volume was low after every connect:**
+  1. The slider was spread over 45 dB, so half volume was −22.5 dB. It now uses the sender's 30 dB as sent: half volume is −15 dB.
+  2. Each session started from a −15 default. The last volume a sender set is now kept in SharedPreferences (mute excepted), used until the sender sends one, and returned for `GET_PARAMETER volume`.
+  - Still to check in the logs: whether iOS sends its own volume on connect, and what value.
+- **Font: Inter and Inter Display (SIL OFL).** SF Pro's licence allows use only on Apple platforms. Inter is the closest open design and has its own display cut for large sizes.
+- **Moving background:** three copies of a 48 px, saturated, blurred thumbnail of the cover, turning at different speeds around different points.
+  - They're composited on the CPU into a 192×108 bitmap at about 30 fps, then drawn once, scaled up.
+  - Three blended full-screen layers would be about 6 MP of fill per frame on the Chromecast's GPU; this is one layer.
+  - A 128 px tile of 3 % grain hides 8-bit banding.
+  - The scrim darkens brighter covers more (0.18 + 0.5 × mean luminance), so white text stays legible.
+- **Artwork:** continuous ("squircle") corners use the usual Bézier fit of iOS corners. While paused, the cover springs back to 84 % and its shadow drops, as in Apple Music.
+- **Removed:** the accent colour taken from the cover (Palette). Apple's Now Playing is white on the cover's colours; system blue and green remain only for focus and switches in Settings.

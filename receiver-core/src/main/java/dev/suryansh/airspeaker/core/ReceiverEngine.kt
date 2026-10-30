@@ -6,6 +6,8 @@ import dev.suryansh.airspeaker.core.audio.AudioFocus
 import dev.suryansh.airspeaker.core.audio.Volume
 import dev.suryansh.airspeaker.core.dacp.DacpClient
 import dev.suryansh.airspeaker.core.meta.MetadataHandler
+import dev.suryansh.airspeaker.core.meta.Progress
+import dev.suryansh.airspeaker.core.meta.TrackClock
 import dev.suryansh.airspeaker.core.raop.RaopConnection
 import dev.suryansh.airspeaker.core.raop.RaopHost
 import dev.suryansh.airspeaker.core.rtsp.RtspServer
@@ -32,7 +34,13 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
     private var server: RtspServer? = null
     private var active: RaopConnection? = null
     private var dacp: DacpClient? = null
-    private val metadata = MetadataHandler { transform -> _state.update(transform) }
+    private val metadata = MetadataHandler(update = { transform -> _state.update(transform) }, onProgress = ::onProgress)
+    private val trackClock = TrackClock()
+    private val prefs = context.getSharedPreferences("receiver", Context.MODE_PRIVATE)
+
+    /** The last volume a sender set, so a new session (or GET_PARAMETER) starts where the last one ended. */
+    @Volatile
+    private var lastVolume: Double? = prefs.getFloat(KEY_VOLUME, Float.NaN).toDouble().takeUnless { it.isNaN() }
     private var focusGain = 1f
 
     /** User latency adjustment in ms, applied to the current and future sessions. */
@@ -106,22 +114,36 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
         }
         audioFocus.release()
         onStreamingChanged(false)
+        synchronized(trackClock) { trackClock.reset() }
         _state.value = NowPlayingState()
     }
 
     override fun onSenderInfo(connection: RaopConnection, name: String?) {
-        if (isActive(connection)) _state.update { NowPlayingState(status = it.status, senderName = name, volume = it.volume) }
+        if (!isActive(connection)) return
+        synchronized(trackClock) { trackClock.reset() }
+        _state.update { NowPlayingState(status = it.status, senderName = name, volume = it.volume) }
     }
 
+    /**
+     * Status follows what is heard: Buffering once audio arrives, Playing from the first audible
+     * frame, Paused as soon as audio stops (FLUSH for a pause or a skip, or the sender going quiet).
+     */
     override fun onOutputChanged(connection: RaopConnection, playing: Boolean) {
         if (!isActive(connection)) return
         if (playing) {
             audioFocus.acquire()
-            _state.update { it.copy(status = NowPlayingState.Status.Playing, positionAtElapsedMs = SystemClock.elapsedRealtime()) }
+            _state.update { if (it.status == NowPlayingState.Status.Playing) it else it.copy(status = NowPlayingState.Status.Buffering) }
         } else {
-            _state.update { if (it.status == NowPlayingState.Status.Playing) it.copy(status = NowPlayingState.Status.Paused) else it }
+            stopTrackClock()
         }
         onStreamingChanged(playing)
+    }
+
+    override fun onHeard(connection: RaopConnection, rtp: Int, atNs: Long) {
+        if (!isActive(connection)) return
+        val atMs = SystemClock.elapsedRealtime() + (atNs - System.nanoTime()) / 1_000_000
+        val position = synchronized(trackClock) { trackClock.onHeard(rtp, atMs) }
+        _state.update { it.withPosition(position).copy(status = NowPlayingState.Status.Playing) }
     }
 
     override fun onRecord(connection: RaopConnection) {
@@ -129,23 +151,44 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
     }
 
     override fun onPaused(connection: RaopConnection) {
-        if (isActive(connection)) _state.update { it.copy(status = NowPlayingState.Status.Paused) }
+        if (isActive(connection)) stopTrackClock()
     }
+
+    private fun stopTrackClock() {
+        val position = synchronized(trackClock) { trackClock.onStopped(SystemClock.elapsedRealtime()) }
+        _state.update {
+            if (it.status == NowPlayingState.Status.Idle) it
+            else it.withPosition(position).copy(status = NowPlayingState.Status.Paused)
+        }
+    }
+
+    private fun onProgress(progress: Progress) {
+        val position = synchronized(trackClock) { trackClock.onProgress(progress, SystemClock.elapsedRealtime()) }
+        _state.update { it.withPosition(position) }
+    }
+
+    private fun NowPlayingState.withPosition(p: TrackClock.Position) =
+        copy(positionMs = p.positionMs, positionAtElapsedMs = p.atMs, durationMs = p.durationMs ?: durationMs)
 
     override fun onVolume(connection: RaopConnection, volume: Double) {
         if (!isActive(connection)) return
         Logs.audio.i("volume $volume")
         _state.update { it.copy(volume = volume) }
+        // Mute isn't remembered: a new session shouldn't start silent.
+        if (volume >= Volume.MIN) {
+            lastVolume = volume
+            prefs.edit().putFloat(KEY_VOLUME, volume.toFloat()).apply()
+        }
         applyGain()
     }
 
-    override fun currentVolume(): Double? = _state.value.volume
+    override fun currentVolume(): Double? = _state.value.volume ?: lastVolume
 
     override fun latencyOffsetMs(): Int = latencyOffsetMs
 
     override fun gain(): Float {
         if (forceMuted()) return 0f
-        return Volume.gain(_state.value.volume ?: DEFAULT_VOLUME) * focusGain
+        return Volume.gain(_state.value.volume ?: lastVolume ?: DEFAULT_VOLUME) * focusGain
     }
 
     override fun onParameters(connection: RaopConnection, contentType: String?, body: ByteArray) {
@@ -180,5 +223,6 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
 
     private companion object {
         const val DEFAULT_VOLUME = -15.0
+        const val KEY_VOLUME = "volume"
     }
 }

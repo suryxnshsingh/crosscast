@@ -38,8 +38,10 @@ import dev.suryansh.airspeaker.service.DebugFlags
 import dev.suryansh.airspeaker.service.ReceiverState
 import dev.suryansh.airspeaker.settings.SettingsRepository
 import dev.suryansh.airspeaker.ui.AirSpeakerTheme
+import dev.suryansh.airspeaker.ui.Glyphs
 import dev.suryansh.airspeaker.ui.IdleScreen
 import dev.suryansh.airspeaker.ui.NowPlayingScreen
+import dev.suryansh.airspeaker.ui.RemoteToast
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -61,7 +63,7 @@ class MainActivity : ComponentActivity() {
         }
 
     private var autoLaunched = false
-    private var toast by mutableStateOf<String?>(null)
+    private var toast by mutableStateOf<RemoteToast?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -89,7 +91,7 @@ class MainActivity : ComponentActivity() {
 
             LaunchedEffect(state.status) {
                 // Keep the screen on only while audio plays; afterwards the TV's own screensaver applies.
-                if (state.status == Status.Playing) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                if (state.status == Status.Playing || state.status == Status.Buffering) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
 
@@ -138,9 +140,9 @@ class MainActivity : ComponentActivity() {
         }
         val (command, label) = when (keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
-            KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> DacpClient.Command.PlayPause to "Play / Pause"
-            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_NEXT -> DacpClient.Command.Next to "Next track"
-            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> DacpClient.Command.Previous to "Previous track"
+            KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> DacpClient.Command.PlayPause to RemoteToast("Play/Pause", Glyphs.PlayPause)
+            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_NEXT -> DacpClient.Command.Next to RemoteToast("Next", Glyphs.Forward)
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> DacpClient.Command.Previous to RemoteToast("Previous", Glyphs.Backward)
             else -> return super.onKeyDown(keyCode, event)
         }
         if (event.repeatCount > 0) return true
@@ -148,12 +150,12 @@ class MainActivity : ComponentActivity() {
             showToast(label)
             val status = ReceiverState.sendRemote(command)
             Logs.ui.i("remote ${command.path} → ${status ?: "unavailable"}")
-            if (status == null || status !in 200..299) showToast("Remote control unavailable")
+            if (status == null || status !in 200..299) showToast(RemoteToast("Remote control unavailable"))
         }
         return true
     }
 
-    private suspend fun showToast(message: String) {
+    private suspend fun showToast(message: RemoteToast) {
         toast = message
         delay(1_200)
         if (toast == message) toast = null

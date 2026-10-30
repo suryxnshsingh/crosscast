@@ -53,7 +53,7 @@ data class TrackInfo(val title: String?, val artist: String?, val album: String?
 }
 
 /** `progress: start/current/end`, all RTP timestamps (44.1 kHz, unsigned 32-bit). */
-data class Progress(val positionMs: Long, val durationMs: Long) {
+data class Progress(val startRtp: Int, val positionMs: Long, val durationMs: Long) {
     companion object {
         fun parse(value: String, sampleRate: Int = 44100): Progress? {
             val parts = value.trim().split('/')
@@ -61,7 +61,7 @@ data class Progress(val positionMs: Long, val durationMs: Long) {
             val (start, current, end) = parts.map { it.trim().toLongOrNull() ?: return null }
             val position = (current - start) and 0xFFFFFFFFL // unsigned difference survives RTP wrap
             val duration = (end - start) and 0xFFFFFFFFL
-            return Progress(position * 1000 / sampleRate, duration * 1000 / sampleRate)
+            return Progress(start.toInt(), position * 1000 / sampleRate, duration * 1000 / sampleRate)
         }
     }
 }

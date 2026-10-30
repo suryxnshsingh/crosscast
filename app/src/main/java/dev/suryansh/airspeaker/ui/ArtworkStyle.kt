@@ -1,45 +1,62 @@
 package dev.suryansh.airspeaker.ui
 
 import android.graphics.Bitmap
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.luminance
-import androidx.palette.graphics.Palette
+import android.graphics.Canvas
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.Shader
 
-/** Colours and backdrop derived from the cover art, computed once per artwork. */
-class ArtworkStyle(val accent: Color, val backdrop: ImageBitmap?) {
+/** The cover art prepared once per track for the moving background. */
+class ArtworkStyle private constructor(
+    /** A tiny, saturated, heavily blurred copy of the cover. */
+    val colors: Bitmap,
+    /** How much to darken the background (0..1) so white text stays legible over bright covers. */
+    val scrim: Float,
+) {
     companion object {
-        val Default = ArtworkStyle(AirSpeakerColors.Accent, null)
+        private const val SIZE = 48
+        private const val SATURATION = 1.5f
 
-        fun from(artwork: Bitmap?): ArtworkStyle {
-            if (artwork == null) return Default
-            return ArtworkStyle(accentOf(artwork), blurredBackdrop(artwork))
+        /** Cool graphite, for tracks without artwork. */
+        val Default: ArtworkStyle by lazy { create(placeholder()) }
+
+        fun from(artwork: Bitmap?): ArtworkStyle = if (artwork == null) Default else create(artwork)
+
+        private fun create(source: Bitmap): ArtworkStyle {
+            val small = Bitmap.createScaledBitmap(source, SIZE, SIZE, true)
+            val px = IntArray(SIZE * SIZE)
+            small.getPixels(px, 0, SIZE, 0, 0, SIZE, SIZE)
+            if (small !== source) small.recycle()
+            saturate(px, SATURATION)
+            repeat(3) { boxBlur(px, SIZE, radius = 4) }
+            // Darker scrims for brighter covers: what's left behind the text stays under ~35 % luminance.
+            val luminance = px.sumOf { luma(it).toDouble() }.toFloat() / px.size / 255f
+            val scrim = (0.18f + 0.5f * luminance).coerceIn(0.2f, 0.62f)
+            return ArtworkStyle(Bitmap.createBitmap(px, SIZE, SIZE, Bitmap.Config.ARGB_8888), scrim)
         }
 
-        /** The most vibrant colour, lifted until it reads clearly on a dark background. */
-        private fun accentOf(artwork: Bitmap): Color {
-            val palette = Palette.from(artwork).maximumColorCount(16).generate()
-            val swatch = palette.vibrantSwatch ?: palette.lightVibrantSwatch ?: palette.mutedSwatch ?: palette.dominantSwatch
-            var color = swatch?.let { Color(it.rgb) } ?: return AirSpeakerColors.Accent
-            var steps = 0
-            while (color.luminance() < 0.3f && steps++ < 8) color = lerp(color, Color.White, 0.2f)
-            return color
+        private fun placeholder(): Bitmap {
+            val bitmap = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
+            val paint = Paint().apply {
+                shader = LinearGradient(
+                    0f, 0f, SIZE.toFloat(), SIZE.toFloat(),
+                    intArrayOf(0xFF3E4A62.toInt(), 0xFF4A3F63.toInt(), 0xFF1F232B.toInt()), null, Shader.TileMode.CLAMP,
+                )
+            }
+            Canvas(bitmap).drawRect(0f, 0f, SIZE.toFloat(), SIZE.toFloat(), paint)
+            return bitmap
         }
 
-        /**
-         * A heavily blurred copy for the background, made in software from a 40 px thumbnail so
-         * drawing it full-screen costs nothing on the Chromecast's GPU.
-         */
-        private fun blurredBackdrop(artwork: Bitmap): ImageBitmap {
-            val size = 40
-            val small = Bitmap.createScaledBitmap(artwork, size, size, true)
-            val pixels = IntArray(size * size)
-            small.getPixels(pixels, 0, size, 0, 0, size, size)
-            if (small !== artwork) small.recycle()
-            repeat(3) { boxBlur(pixels, size, radius = 3) }
-            return Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888).asImageBitmap()
+        private fun luma(p: Int): Int =
+            (299 * ((p shr 16) and 0xFF) + 587 * ((p shr 8) and 0xFF) + 114 * (p and 0xFF)) / 1000
+
+        private fun saturate(px: IntArray, amount: Float) {
+            for (i in px.indices) {
+                val p = px[i]
+                val l = luma(p)
+                fun ch(c: Int) = (l + (c - l) * amount).toInt().coerceIn(0, 255)
+                px[i] = (0xFF shl 24) or (ch((p shr 16) and 0xFF) shl 16) or (ch((p shr 8) and 0xFF) shl 8) or ch(p and 0xFF)
+            }
         }
 
         private fun boxBlur(px: IntArray, size: Int, radius: Int) {
