@@ -147,3 +147,8 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
   - `setproperty?dmcp.device-volume=…` returns 200 but changes nothing: no volume came back, and the slider didn't move.
   - So a classic receiver can't set the iPhone's slider, and can't ask whether it is playing.
 - **Volume at the start of a session:** new sessions started at `volume -20.0` (14:09:59 and 14:10:08). A session iOS resumed after the receiver restarted (same session ID) came back at the level set before (−3.94).
+- **New sessions always open at −20, and the receiver can't move the iPhone's slider.**
+  - So the receiver pins the level it last played at to iOS's opening position (`VolumeCurve`). From there the slider still spans −30 dB at the bottom to 0 dB at the top, linearly on each side.
+  - The iPhone's slider opens at about a third while the sound is at the remembered level.
+  - User verdict 2026-10-30: "better but not the best", left as is for now.
+  - The Chromecast's own HDMI volume was 16 of 25, which adds roughly 15 dB of attenuation on top.

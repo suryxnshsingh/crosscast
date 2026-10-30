@@ -80,4 +80,26 @@ class ClockAndBufferTest {
         assertEquals(0.0316f, Volume.gain(-30.0), 0.0001f) // -30 dB
         assertEquals(0.1778f, Volume.gain(-15.0), 0.0001f) // -15 dB
     }
+
+    @Test
+    fun `a session iOS opens at -20 starts at the remembered level and keeps the slider's full range`() {
+        val curve = VolumeCurve(opened = -20.0, anchor = -4.0)
+        assertEquals(-4.0, curve.effective(-20.0), 1e-9) // as loud as last time
+        assertEquals(0.0, curve.effective(0.0), 1e-9) // the top is still full volume
+        assertEquals(-30.0, curve.effective(-30.0), 1e-9) // the bottom still quietest
+        assertEquals(-2.0, curve.effective(-10.0), 1e-9) // halfway up the upper part
+        assertEquals(-17.0, curve.effective(-25.0), 1e-9) // halfway down the lower part
+        assertEquals(Volume.MUTE, curve.effective(Volume.MUTE), 0.0)
+        // Louder always means louder.
+        val levels = (-300..0).map { curve.effective(it / 10.0) }
+        assertEquals(levels.sorted(), levels)
+    }
+
+    @Test
+    fun `the volume curve is the identity when nothing needs pinning`() {
+        for (opened in listOf(-20.0, -3.94)) {
+            val curve = VolumeCurve(opened = opened, anchor = opened)
+            for (v in listOf(-30.0, -20.0, -12.5, -3.94, 0.0)) assertEquals(v, curve.effective(v), 1e-9)
+        }
+    }
 }

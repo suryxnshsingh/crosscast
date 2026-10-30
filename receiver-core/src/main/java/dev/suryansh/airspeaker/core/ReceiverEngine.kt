@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.SystemClock
 import dev.suryansh.airspeaker.core.audio.AudioFocus
 import dev.suryansh.airspeaker.core.audio.Volume
+import dev.suryansh.airspeaker.core.audio.VolumeCurve
 import dev.suryansh.airspeaker.core.dacp.DacpClient
 import dev.suryansh.airspeaker.core.meta.MetadataHandler
 import dev.suryansh.airspeaker.core.meta.Progress
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.io.File
+import java.util.Locale
 
 /**
  * The classic AirPlay receiver: RTSP server plus whichever sender is currently playing.
@@ -38,9 +40,13 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
     private val trackClock = TrackClock()
     private val prefs = context.getSharedPreferences("receiver", Context.MODE_PRIVATE)
 
-    /** The last volume a sender set, so a new session (or GET_PARAMETER) starts where the last one ended. */
+    /** The last level played at (−30..0 dB), so a new session starts as loud as the last one ended. */
     @Volatile
     private var lastVolume: Double? = prefs.getFloat(KEY_VOLUME, Float.NaN).toDouble().takeUnless { it.isNaN() }
+
+    /** This session's mapping from the sender's slider to the level played, set by its first volume. */
+    @Volatile
+    private var volumeCurve: VolumeCurve? = null
     private var focusGain = 1f
 
     /** User latency adjustment in ms, applied to the current and future sessions. */
@@ -117,12 +123,14 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
         audioFocus.release()
         onStreamingChanged(false)
         synchronized(trackClock) { trackClock.reset() }
+        volumeCurve = null
         _state.value = NowPlayingState()
     }
 
     override fun onSenderInfo(connection: RaopConnection, name: String?) {
         if (!isActive(connection)) return
         synchronized(trackClock) { trackClock.reset() }
+        volumeCurve = null
         _state.update { NowPlayingState(status = it.status, senderName = name, volume = it.volume) }
     }
 
@@ -180,12 +188,14 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
 
     override fun onVolume(connection: RaopConnection, volume: Double) {
         if (!isActive(connection)) return
-        Logs.audio.i("volume $volume")
-        _state.update { it.copy(volume = volume) }
+        val curve = volumeCurve ?: VolumeCurve(opened = volume, anchor = lastVolume ?: volume).also { volumeCurve = it }
+        val level = curve.effective(volume)
+        Logs.audio.i("volume $volume → %.1f dB".format(Locale.US, level))
+        _state.update { it.copy(volume = level) }
         // Mute isn't remembered: a new session shouldn't start silent.
-        if (volume >= Volume.MIN) {
-            lastVolume = volume
-            prefs.edit().putFloat(KEY_VOLUME, volume.toFloat()).apply()
+        if (level >= Volume.MIN) {
+            lastVolume = level
+            prefs.edit().putFloat(KEY_VOLUME, level.toFloat()).apply()
         }
         applyGain()
     }
