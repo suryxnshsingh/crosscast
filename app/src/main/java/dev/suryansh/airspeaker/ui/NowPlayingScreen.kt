@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -36,9 +37,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -120,35 +123,88 @@ private fun ArtworkCard(artwork: Bitmap?, paused: Boolean) {
         label = "artScale",
     )
     val shape = remember { ContinuousRoundedShape(14.dp) }
+    val shadow = remember { SoftShadow.image() }
     Box(
         Modifier
             .size(ART_SIZE)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
-                // Lifted while playing, closer to the background when paused.
-                val lift = ((scale - PAUSED_SCALE) / (1f - PAUSED_SCALE)).coerceIn(0f, 1f)
-                shadowElevation = (10 + 26 * lift).dp.toPx()
-                this.shape = shape
-                clip = true
-                ambientShadowColor = Color.Black
-                spotShadowColor = Color.Black
-            }
-            .border(1.dp, AirSpeakerColors.Hairline, shape),
+            },
     ) {
-        Crossfade(artwork, animationSpec = tween(700), label = "artwork") { art ->
-            if (art != null) {
-                Image(art.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, filterQuality = FilterQuality.High)
-            } else {
-                // Apple Music's empty-artwork tile: graphite with a note.
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(Brush.linearGradient(listOf(Color(0xFF545458), Color(0xFF2C2C2E)))),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Glyphs.MusicNote, contentDescription = null, tint = Color.White.copy(alpha = 0.55f), modifier = Modifier.size(140.dp))
+        // Lifted while playing, closer to the background when paused.
+        val lift = ((scale - PAUSED_SCALE) / (1f - PAUSED_SCALE)).coerceIn(0f, 1f)
+        Image(
+            shadow,
+            contentDescription = null,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .requiredSize(ART_SIZE * SoftShadow.EXTENT)
+                .graphicsLayer {
+                    translationY = (8 + 14 * lift).dp.toPx()
+                    alpha = 0.4f + 0.2f * lift
+                },
+            contentScale = ContentScale.FillBounds,
+            filterQuality = FilterQuality.Low,
+        )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clip(shape)
+                .border(1.dp, AirSpeakerColors.Hairline, shape),
+        ) {
+            Crossfade(artwork, animationSpec = tween(700), label = "artwork") { art ->
+                if (art != null) {
+                    Image(art.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, filterQuality = FilterQuality.High)
+                } else {
+                    // Apple Music's empty-artwork tile: graphite with a note.
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(Brush.linearGradient(listOf(Color(0xFF545458), Color(0xFF2C2C2E)))),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Glyphs.MusicNote, contentDescription = null, tint = Color.White.copy(alpha = 0.55f), modifier = Modifier.size(140.dp))
+                    }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * A soft drop shadow, blurred once in software and scaled up, instead of an elevation shadow:
+ * Apple-soft, a single image for the GPU, and the screenshot tests draw it exactly as the TV does
+ * (Robolectric can't render elevation shadows and drew a stray light strip instead).
+ */
+private object SoftShadow {
+    private const val SIZE = 64
+    private const val SQUARE = 34 // the artwork's share of the image; the rest is room for the blur
+
+    /** How much bigger than the artwork the shadow image is drawn. */
+    const val EXTENT = SIZE.toFloat() / SQUARE
+
+    fun image(): ImageBitmap {
+        val alpha = IntArray(SIZE * SIZE)
+        val from = (SIZE - SQUARE) / 2
+        for (y in from until from + SQUARE) for (x in from until from + SQUARE) alpha[y * SIZE + x] = 255
+        repeat(3) { blur(alpha, radius = 4) }
+        val px = IntArray(SIZE * SIZE) { alpha[it] shl 24 } // black, with the blurred alpha
+        return Bitmap.createBitmap(px, SIZE, SIZE, Bitmap.Config.ARGB_8888).asImageBitmap()
+    }
+
+    private fun blur(a: IntArray, radius: Int) {
+        val tmp = IntArray(a.size)
+        for (horizontal in listOf(true, false)) {
+            val src = if (horizontal) a else tmp
+            val dst = if (horizontal) tmp else a
+            for (i in 0 until SIZE) for (j in 0 until SIZE) {
+                var sum = 0
+                for (k in -radius..radius) {
+                    val c = (j + k).coerceIn(0, SIZE - 1)
+                    sum += if (horizontal) src[i * SIZE + c] else src[c * SIZE + i]
+                }
+                dst[if (horizontal) i * SIZE + j else j * SIZE + i] = sum / (2 * radius + 1)
             }
         }
     }

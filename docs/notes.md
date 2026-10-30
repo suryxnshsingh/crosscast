@@ -127,4 +127,5 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
   - A 128 px tile of 3 % grain hides 8-bit banding.
   - The scrim darkens brighter covers more (0.18 + 0.5 × mean luminance), so white text stays legible.
 - **Artwork:** continuous ("squircle") corners use the usual Bézier fit of iOS corners. While paused, the cover springs back to 84 % and its shadow drops, as in Apple Music.
+- **Artwork shadow:** a 64 px pre-blurred image scaled up, not an elevation shadow. Robolectric drew elevation shadows as a stray light strip under the artwork, so the screenshots didn't match the TV. Now they draw the same, the shadow is softer, and the GPU draws one image.
 - **Removed:** the accent colour taken from the cover (Palette). Apple's Now Playing is white on the cover's colours; system blue and green remain only for focus and switches in Settings.
