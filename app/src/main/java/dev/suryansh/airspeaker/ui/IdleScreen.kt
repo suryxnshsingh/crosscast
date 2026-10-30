@@ -74,6 +74,8 @@ fun IdleScreen(
                 Spacer(Modifier.width(10.dp))
                 Text("$friendlyName · Ready for AirPlay", color = AirSpeakerColors.TextSecondary.copy(alpha = 0.5f), fontSize = 16.sp)
             }
+            Spacer(Modifier.height(8.dp))
+            Text("OK for settings", color = AirSpeakerColors.TextSecondary.copy(alpha = 0.3f), fontSize = 13.sp)
         }
     }
 }

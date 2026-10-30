@@ -22,17 +22,23 @@ class RtspServer(preferredPort: Int, private val onConnection: (Socket) -> Unit)
 
     val port: Int = server.localPort
 
-    init {
-        thread(name = "rtsp-accept") {
-            while (!server.isClosed) {
-                try {
-                    val socket = server.accept()
-                    thread(name = "rtsp-${socket.inetAddress.hostAddress}") { onConnection(socket) }
-                } catch (e: SocketException) {
-                    if (!server.isClosed) Logs.rtsp.e("accept failed", e)
-                }
+    private val acceptor = thread(name = "rtsp-accept") {
+        while (!server.isClosed) {
+            try {
+                val socket = server.accept()
+                thread(name = "rtsp-${socket.inetAddress.hostAddress}") { onConnection(socket) }
+            } catch (e: SocketException) {
+                if (!server.isClosed) Logs.rtsp.e("accept failed", e)
+            } catch (e: Exception) {
+                Logs.rtsp.e("accept loop error", e)
             }
         }
+    }
+
+    /** False once the listening socket is gone, e.g. after the network stack reset it. */
+    val isAlive: Boolean get() = !server.isClosed && acceptor.isAlive
+
+    init {
         Logs.rtsp.i("RTSP listening on port $port")
     }
 

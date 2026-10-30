@@ -40,6 +40,12 @@ class PlaybackSession(
 
     fun setGain(gain: Float) = player.setGain(gain)
 
+    fun setLatencyOffsetMs(ms: Int) {
+        clock.extraDelayNs = ms * 1_000_000L
+    }
+
+    val lastPacketAtNs: Long get() = rtp.lastPacketAtNs
+
     override fun close() {
         rtp.close()
         player.close()

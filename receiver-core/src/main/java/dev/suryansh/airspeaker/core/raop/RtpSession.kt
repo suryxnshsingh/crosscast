@@ -45,6 +45,11 @@ class RtpSession(
     private val pcm = ShortArray(announce.framesPerPacket * 2)
 
     @Volatile private var closed = false
+
+    /** When the last packet of any kind arrived from the sender ([System.nanoTime]). */
+    @Volatile
+    var lastPacketAtNs = System.nanoTime()
+        private set
     private var expectedSeq = -1
     private var resendSeq = 0
 
@@ -84,6 +89,7 @@ class RtpSession(
             try {
                 packet.setData(bytes, 0, bytes.size)
                 socket.receive(packet)
+                lastPacketAtNs = System.nanoTime()
                 handle(bytes, packet.length)
             } catch (e: SocketException) {
                 if (!closed) Logs.rtsp.w("UDP socket failed", e)

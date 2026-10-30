@@ -37,6 +37,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -75,7 +76,15 @@ fun NowPlayingScreen(
 ) {
     val style = remember(state.artwork) { ArtworkStyle.from(state.artwork) }
     val accent by animateColorAsState(style.accent, tween(800), label = "accent")
-    val paused = state.status == NowPlayingState.Status.Paused
+    // A track skip also FLUSHes, and the new audio is ~2 s away; only look paused if it lasts.
+    val paused by produceState(state.status == NowPlayingState.Status.Paused && !motion, state.status) {
+        value = if (state.status == NowPlayingState.Status.Paused) {
+            if (motion) delay(PAUSE_DEBOUNCE_MS)
+            true
+        } else {
+            false
+        }
+    }
 
     Box(modifier.fillMaxSize().background(AirSpeakerColors.Background)) {
         Backdrop(style, motion)
@@ -262,6 +271,8 @@ private fun Progress(state: NowPlayingState, accent: Color, live: Boolean) {
         Text("−" + clock(duration - position), color = AirSpeakerColors.TextSecondary, fontSize = 18.sp, style = digits)
     }
 }
+
+private const val PAUSE_DEBOUNCE_MS = 2_500L
 
 private fun clock(ms: Long): String {
     val s = ms / 1000

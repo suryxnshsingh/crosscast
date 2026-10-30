@@ -10,6 +10,7 @@ import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.IOException
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.util.Base64
 import java.util.Locale
 
@@ -26,6 +27,7 @@ interface RaopHost {
     fun onVolume(connection: RaopConnection, volume: Double)
     fun currentVolume(): Double?
     fun gain(): Float
+    fun latencyOffsetMs(): Int = 0
     fun onParameters(connection: RaopConnection, contentType: String?, body: ByteArray)
 
     /** RECORD: the sender is about to start streaming. */
@@ -41,6 +43,7 @@ class RaopConnection(private val socket: Socket, private val host: RaopHost) {
     @Volatile private var session: PlaybackSession? = null
     private var airPlayVersion = 0
     @Volatile private var terminated = false
+    @Volatile private var lastRequestAtNs = System.nanoTime()
 
     var dacpId: String? = null
         private set
@@ -52,10 +55,20 @@ class RaopConnection(private val socket: Socket, private val host: RaopHost) {
         Logs.rtsp.i("connection from ${socket.inetAddress.hostAddress}")
         try {
             socket.tcpNoDelay = true
+            socket.soTimeout = READ_TIMEOUT_MS
             val input = BufferedInputStream(socket.getInputStream())
             val output = BufferedOutputStream(socket.getOutputStream())
             while (!terminated) {
-                val request = Rtsp.readRequest(input) ?: break
+                val request = try {
+                    Rtsp.readRequest(input) ?: break
+                } catch (e: SocketTimeoutException) {
+                    if (isAbandoned()) {
+                        Logs.rtsp.w("no traffic from ${socket.inetAddress.hostAddress} for ${SESSION_TIMEOUT_NS / 1_000_000_000} s; dropping the session")
+                        break
+                    }
+                    continue
+                }
+                lastRequestAtNs = System.nanoTime()
                 val response = try {
                     handle(request)
                 } catch (e: IllegalArgumentException) {
@@ -70,6 +83,9 @@ class RaopConnection(private val socket: Socket, private val host: RaopHost) {
             if (!terminated) Logs.rtsp.i("connection closed: ${e.message}")
         } catch (e: RtspProtocolException) {
             Logs.rtsp.w("protocol error: ${e.message}")
+        } catch (e: Exception) {
+            // One misbehaving sender must never take the receiver down with it.
+            Logs.rtsp.e("connection failed", e)
         } finally {
             endSession()
             try {
@@ -93,6 +109,17 @@ class RaopConnection(private val socket: Socket, private val host: RaopHost) {
 
     fun setGain(gain: Float) {
         session?.setGain(gain)
+    }
+
+    fun setLatencyOffsetMs(ms: Int) {
+        session?.setLatencyOffsetMs(ms)
+    }
+
+    /** Neither RTSP requests nor RTP packets for [SESSION_TIMEOUT_NS]: the sender is gone. */
+    private fun isAbandoned(): Boolean {
+        val now = System.nanoTime()
+        val lastPacket = session?.lastPacketAtNs ?: 0L
+        return now - maxOf(lastRequestAtNs, lastPacket) > SESSION_TIMEOUT_NS
     }
 
     private fun handle(req: RtspRequest): RtspResponse {
@@ -137,6 +164,7 @@ class RaopConnection(private val socket: Socket, private val host: RaopHost) {
                     decodedTap = host.decodedTap(),
                 )
                 s.setGain(host.gain())
+                s.setLatencyOffsetMs(host.latencyOffsetMs())
                 s.startReceiving()
                 session = s
                 response.header(
@@ -209,6 +237,9 @@ class RaopConnection(private val socket: Socket, private val host: RaopHost) {
     }
 
     companion object {
+        private const val READ_TIMEOUT_MS = 15_000
+        private const val SESSION_TIMEOUT_NS = 120_000_000_000L
+
         /** `RTP/AVP/UDP;unicast;control_port=6001;timing_port=6002` to a map. */
         fun parseTransport(header: String): Map<String, String> = header.split(';').mapNotNull { part ->
             part.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0].trim() to it[1].trim() }

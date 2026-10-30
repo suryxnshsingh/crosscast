@@ -12,7 +12,11 @@ import dev.suryansh.airspeaker.core.NowPlayingState
 import dev.suryansh.airspeaker.core.NowPlayingState.Status
 import dev.suryansh.airspeaker.ui.AirSpeakerTheme
 import dev.suryansh.airspeaker.ui.IdleScreen
+import dev.suryansh.airspeaker.service.ReceiverStatus
 import dev.suryansh.airspeaker.ui.NowPlayingScreen
+import dev.suryansh.airspeaker.ui.SettingsActions
+import dev.suryansh.airspeaker.ui.SettingsScreen
+import dev.suryansh.airspeaker.ui.SettingsValues
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
@@ -59,6 +63,27 @@ class UiScreenshotTest {
     @Test
     fun idleClock() = capture("idle_clock") {
         IdleScreen("Room Speaker", fixedTimeMs = 1_793_318_400_000L, zone = ZoneId.of("Asia/Kolkata"))
+    }
+
+    @Test
+    fun settings() = capture("settings") {
+        SettingsScreen(
+            status = ReceiverStatus(
+                running = true, address = "192.168.29.48", port = 5000, bonjourName = "1E2E5EB64A10@Room Speaker",
+                registered = true, lastSender = "Suryansh’s iPhone", lastSessionAtMs = 1_793_318_400_000L,
+            ),
+            problems = listOf("05:51:18 audio: sync error -56 ms; re-aligning", "05:49:44 rtsp: port 5000 is busy; using a free port"),
+            values = SettingsValues("Room Speaker", autoShowUi = true, idleTimeoutS = 180, latencyOffsetMs = 20, startOnBoot = true),
+            actions = object : SettingsActions {
+                override fun setFriendlyName(name: String) = Unit
+                override fun setAutoShowUi(value: Boolean) = Unit
+                override fun setIdleTimeoutS(value: Int) = Unit
+                override fun setLatencyOffsetMs(value: Int) = Unit
+                override fun setStartOnBoot(value: Boolean) = Unit
+            },
+            version = "0.1.0",
+            zone = ZoneId.of("Asia/Kolkata"),
+        )
     }
 
     private fun capture(name: String, content: @androidx.compose.runtime.Composable () -> Unit) =

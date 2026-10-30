@@ -70,7 +70,7 @@ Debug switches on the TV (create the file to turn one on, delete it to turn it o
 2. *(Mac → TV, muted)* pyatv streams a tagged MP3 with cover art. Within 1 s, `adb -s $TV logcat -s meta` shows `track "…" by … on …`, `artwork W×H` (≤ 1080 px) and `progress m:ss / m:ss`.
 3. *(you)* iPhone → Room Speaker: skip to the next track. `logcat -s meta` shows the new title, artist and artwork within 1 s of the change.
 4. *(you)* After a track with no artwork, the artwork is cleared rather than left over from the previous track.
-5. *(you, with Phase 6 UI)* With the receiver playing from the iPhone, `adb -s $TV shell am broadcast -a dev.suryansh.airspeaker.DACP --es command playpause -n dev.suryansh.airspeaker/.service.DebugCommandReceiver` (debug builds only) pauses the iPhone, and `logcat -s meta` shows `DACP playpause → 204`.
+5. *(you)* With the receiver playing from the iPhone, `adb -s $TV shell am broadcast -n dev.suryansh.airspeaker/.service.DebugCommandReceiver --es command playpause` (debug builds only) pauses the iPhone, and `logcat -s meta` shows `DACP playpause → 204`.
 
 ## Phase 6: full-screen Now Playing UI
 
@@ -98,3 +98,40 @@ One-time grants on the TV (sideloaded apps can't ask for these through a dialog 
 7. *(you)* Stop playing on the iPhone (or pick another output). A dim clock appears, then after the idle timeout (default 3 min) the TV returns to the previous screen.
 8. *(you)* While playing, the screen never sleeps (`dumpsys window | grep -i keepscreen`). After the session ends, the normal screensaver and sleep come back.
 9. *(you)* Over a few minutes the layout shifts by a few pixels each minute (burn-in protection).
+
+## Phase 7: settings and polish
+
+1. *(Mac)* Tests pass, and the screenshot test renders the settings and status screen.
+2. *(TV)* Settings work as follows. Each change is checked over adb, or by streaming from the Mac.
+   - **Friendly name:** changing it re-registers mDNS within about 2 s, and `dns-sd -B _raop._tcp` shows the new name.
+   - **Auto-show Now Playing:** when off, a session starts without bringing the UI forward.
+   - **Idle timeout:** the clock closes after the configured time.
+   - **Latency offset:** shifts playback, visible as `latency offset` in `logcat -s audio`.
+   - **Start on boot:** when off, the boot receiver logs `start on boot disabled` and doesn't start the service.
+3. *(TV)* The status block shows:
+   - that the receiver is running
+   - the IP address and port
+   - the Bonjour name and whether it's registered
+   - the last session (sender and time)
+   - recent warnings and errors
+4. *(TV)* Self-healing:
+   - Killing the RTSP server (debug: `am broadcast … --es command kill_server`, see README) makes the supervisor log `engine unhealthy; restarting`, and port 5000 accepts connections again within 15 s.
+   - A connection whose sender vanishes without TEARDOWN is dropped after 2 minutes with no RTSP or RTP traffic, and the UI returns to the clock.
+5. *(you)* A full day of normal use without opening the app manually covers:
+   - Wi-Fi drops and comes back
+   - a second sender (the Mac) taking over
+   - the iPhone locking during playback
+   - a long track (over 1 hour), where the progress shows h:mm:ss
+   - a track without artwork, which shows the gradient placeholder
+
+## Phase 8: Apple Watch and the daily routine
+
+Nothing new is built for this phase. The Watch controls the iPhone, and the iPhone sends ordinary AirPlay messages, all of which earlier phases handle.
+
+1. *(you)* Start AirPlay to Room Speaker from the iPhone, then control it from the Watch's Now Playing:
+   - play/pause, which arrives as FLUSH and resume: the TV shows paused or playing within about 2 s
+   - next and previous: the artwork and title change on the TV within about 1 s of the audio change
+   - volume (Digital Crown): the TV shows the volume overlay
+2. *(you)* Changes made on the Watch show up on the TV exactly like changes made on the iPhone (`logcat -s rtsp meta audio`).
+3. *(you)* Switch the iPhone output to headphones (TV goes to the clock, then back to the previous screen after the timeout), then back to Room Speaker (it plays again with no app restart).
+4. *(you)* It feels like an Apple TV used as a speaker. Anything that doesn't goes in docs/notes.md.

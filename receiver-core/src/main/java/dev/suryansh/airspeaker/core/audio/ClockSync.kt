@@ -21,6 +21,10 @@ class ClockSync(private val sampleRate: Int = 44100) {
     private var anchorRemoteNs = 0L
     private var anchored = false
 
+    /** User adjustment added to every play time (positive = later), for outputs with extra delay. */
+    @Volatile
+    var extraDelayNs: Long = 0
+
     /** Latency in frames between a frame being "current" at the sender and it being played. */
     var latencyFrames: Int = DEFAULT_LATENCY
         private set
@@ -81,7 +85,7 @@ class ClockSync(private val sampleRate: Int = 44100) {
         if (!anchored) return null
         val offset = timingOffsetNs ?: fallbackOffsetNs ?: return null
         val frames = (rtp - anchorRtp).toLong() // 32-bit wrap-safe difference
-        return anchorRemoteNs + frames * 1_000_000_000L / sampleRate - offset
+        return anchorRemoteNs + frames * 1_000_000_000L / sampleRate - offset + extraDelayNs
     }
 
     companion object {

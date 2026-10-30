@@ -41,7 +41,10 @@ import dev.suryansh.airspeaker.ui.AirSpeakerTheme
 import dev.suryansh.airspeaker.ui.IdleScreen
 import dev.suryansh.airspeaker.ui.NowPlayingScreen
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -88,12 +91,6 @@ class MainActivity : ComponentActivity() {
                 // Keep the screen on only while audio plays; afterwards the TV's own screensaver applies.
                 if (state.status == Status.Playing) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                if (state.status == Status.Idle && autoLaunched) {
-                    val timeoutMs = settings.idleTimeoutMs.first()
-                    delay(timeoutMs)
-                    Logs.ui.i("idle for ${timeoutMs / 1000} s; returning to the previous screen")
-                    finish()
-                }
             }
 
             AirSpeakerTheme {
@@ -109,6 +106,17 @@ class MainActivity : ComponentActivity() {
             }
         }
         askForPermissionsOnce()
+
+        // Outside composition so it also runs while the activity is stopped (e.g. the TV went to sleep).
+        lifecycleScope.launch {
+            ReceiverState.nowPlaying.map { it.status }.distinctUntilChanged().collectLatest { status ->
+                if (status != Status.Idle || !autoLaunched) return@collectLatest
+                val timeoutMs = settings.idleTimeoutMs.first()
+                delay(timeoutMs)
+                Logs.ui.i("idle for ${timeoutMs / 1000} s; returning to the previous screen")
+                finish()
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -117,7 +125,17 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (ReceiverState.nowPlaying.value.status == Status.Idle) return super.onKeyDown(keyCode, event)
+        if (ReceiverState.nowPlaying.value.status == Status.Idle) {
+            if (keyCode in SETTINGS_KEYS) {
+                startActivity(Intent(this, SettingsActivity::class.java))
+                return true
+            }
+            return super.onKeyDown(keyCode, event)
+        }
+        if (keyCode == KeyEvent.KEYCODE_MENU) {
+            startActivity(Intent(this, SettingsActivity::class.java))
+            return true
+        }
         val (command, label) = when (keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
             KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> DacpClient.Command.PlayPause to "Play / Pause"
@@ -171,6 +189,7 @@ class MainActivity : ComponentActivity() {
         /** Set when the receiver service opens the activity for a new session. */
         const val EXTRA_AUTO = "auto"
         private const val VOLUME_OVERLAY_MS = 2_000L
+        private val SETTINGS_KEYS = setOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MENU)
 
         fun showForSession(context: Context) {
             context.startActivity(

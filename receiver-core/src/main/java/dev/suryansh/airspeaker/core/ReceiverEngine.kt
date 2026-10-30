@@ -34,12 +34,30 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
     private var dacp: DacpClient? = null
     private val metadata = MetadataHandler { transform -> _state.update(transform) }
     private var focusGain = 1f
+
+    /** User latency adjustment in ms, applied to the current and future sessions. */
+    @Volatile
+    var latencyOffsetMs: Int = 0
+        set(value) {
+            field = value
+            Logs.audio.i("latency offset $value ms")
+            synchronized(this) { active }?.setLatencyOffsetMs(value)
+        }
     private val audioFocus = AudioFocus(context) { gain ->
         focusGain = gain
         applyGain()
     }
 
     val port: Int get() = server?.port ?: -1
+
+    /** False if the RTSP server has died; the service then restarts the engine. */
+    val isHealthy: Boolean get() = server?.isAlive == true
+
+    /** Debug: simulates the server dying, to exercise the service's restart path. */
+    fun debugKillServer() {
+        Logs.rtsp.w("debug: closing the RTSP server")
+        server?.close()
+    }
 
     /** Starts the RTSP server and returns the port it listens on. */
     fun start(preferredPort: Int): Int {
@@ -122,6 +140,8 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
     }
 
     override fun currentVolume(): Double? = _state.value.volume
+
+    override fun latencyOffsetMs(): Int = latencyOffsetMs
 
     override fun gain(): Float {
         if (forceMuted()) return 0f
