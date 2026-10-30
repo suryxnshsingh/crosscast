@@ -71,3 +71,30 @@ Debug switches on the TV (create the file to turn one on, delete it to turn it o
 3. *(you)* iPhone → Room Speaker: skip to the next track. `logcat -s meta` shows the new title, artist and artwork within 1 s of the change.
 4. *(you)* After a track with no artwork, the artwork is cleared rather than left over from the previous track.
 5. *(you, with Phase 6 UI)* With the receiver playing from the iPhone, `adb -s $TV shell am broadcast -a dev.suryansh.airspeaker.DACP --es command playpause -n dev.suryansh.airspeaker/.service.DebugCommandReceiver` (debug builds only) pauses the iPhone, and `logcat -s meta` shows `DACP playpause → 204`.
+
+## Phase 6: full-screen Now Playing UI
+
+One-time grants on the TV (sideloaded apps can't ask for these through a dialog on Google TV):
+`adb -s $TV shell appops set dev.suryansh.airspeaker SYSTEM_ALERT_WINDOW allow` (lets the background service bring the UI to the front)
+`adb -s $TV shell appops set dev.suryansh.airspeaker TURN_SCREEN_ON allow` (lets a session wake the TV)
+
+1. *(Mac)* `./gradlew :app:verifyRoborazziDebug` renders the following at 1920×1080. Review the PNGs in `app/src/test/screenshots/`:
+   - now playing with artwork
+   - now playing without artwork (gradient placeholder)
+   - paused
+   - the volume overlay
+   - the idle clock
+2. *(TV, asleep, `files/no_wake` set)* Starting a stream from the Mac makes `dumpsys activity activities` show `MainActivity` resumed or top, launched by the service. The TV stays asleep, which shows the background-launch permission works.
+3. *(you)* With the TV asleep, play from the iPhone to Room Speaker:
+   - the TV wakes (and the monitor too, if it follows HDMI-CEC)
+   - Now Playing appears with the right artwork, and audio is heard within about 2 s
+   - it's readable from across the room
+4. *(you)* Track change: the artwork and text crossfade, the background follows the new artwork, and the accent colour changes.
+5. *(you)* iPhone volume: a volume overlay appears briefly.
+6. *(you)* D-pad on the TV remote:
+   - centre pauses or plays on the iPhone
+   - right skips to the next track, left goes to the previous one
+   - Back hides the UI while audio keeps playing
+7. *(you)* Stop playing on the iPhone (or pick another output). A dim clock appears, then after the idle timeout (default 3 min) the TV returns to the previous screen.
+8. *(you)* While playing, the screen never sleeps (`dumpsys window | grep -i keepscreen`). After the session ends, the normal screensaver and sleep come back.
+9. *(you)* Over a few minutes the layout shifts by a few pixels each minute (burn-in protection).

@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -72,10 +73,34 @@ class AirPlayReceiverService : LifecycleService() {
     private suspend fun startEngine(identity: ReceiverIdentity): Int {
         val e = ReceiverEngine(applicationContext, identity)
         e.onStreamingChanged = { streaming -> lifecycleScope.launch { setStreaming(streaming) } }
+        e.onSessionStarted = { lifecycleScope.launch { onSessionStarted() } }
         engine = e
         ReceiverState.remote = e::sendRemote
         lifecycleScope.launch { e.state.collect { ReceiverState.publish(it) } }
         return withContext(Dispatchers.IO) { e.start(RaopService.RTSP_PORT) }
+    }
+
+    /**
+     * Wakes the TV and brings Now Playing to the front. Waking matters for sound too: while the
+     * Chromecast sleeps, audio is routed to a dummy output instead of HDMI.
+     */
+    private suspend fun onSessionStarted() {
+        if (!SettingsRepository.from(this).autoShowUi.first()) return
+        if (!DebugFlags.noWake(this)) wakeScreen()
+        try {
+            MainActivity.showForSession(this)
+        } catch (e: RuntimeException) {
+            Logs.ui.w("could not open Now Playing; grant SYSTEM_ALERT_WINDOW (see docs/acceptance.md, Phase 6)", e)
+        }
+    }
+
+    private fun wakeScreen() {
+        val power = getSystemService(PowerManager::class.java)
+        if (power.isInteractive) return
+        @Suppress("DEPRECATION") // still the way for a service to turn the screen on; needs TURN_SCREEN_ON
+        power.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "AirSpeaker:session")
+            .acquire(3_000)
+        Logs.ui.i("woke the TV for a session (interactive=${power.isInteractive})")
     }
 
     private suspend fun advertise(network: LocalNetwork?, identity: ReceiverIdentity, port: Int) {

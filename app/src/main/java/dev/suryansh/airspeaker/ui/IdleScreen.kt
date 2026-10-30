@@ -1,55 +1,79 @@
 package dev.suryansh.airspeaker.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
-import dev.suryansh.airspeaker.R
+import kotlinx.coroutines.delay
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
-/** Placeholder shown while no AirPlay session is active. */
+/** Dim clock shown while nothing is playing: readable across the room, kind to the panel. */
 @Composable
-fun IdleScreen(friendlyName: String, modifier: Modifier = Modifier) {
+fun IdleScreen(
+    friendlyName: String,
+    modifier: Modifier = Modifier,
+    use24Hour: Boolean = true,
+    shift: Pair<Dp, Dp> = 0.dp to 0.dp,
+    fixedTimeMs: Long? = null,
+    zone: ZoneId = ZoneId.systemDefault(),
+) {
+    var now by remember { mutableLongStateOf(fixedTimeMs ?: System.currentTimeMillis()) }
+    if (fixedTimeMs == null) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                now = System.currentTimeMillis()
+                delay(1_000 - now % 1_000)
+            }
+        }
+    }
+    val time = Instant.ofEpochMilli(now).atZone(zone)
+    val timeText = time.format(DateTimeFormatter.ofPattern(if (use24Hour) "HH:mm" else "h:mm"))
+    val dateText = time.format(DateTimeFormatter.ofPattern("EEEE, d MMMM"))
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(AirSpeakerColors.Background),
         contentAlignment = Alignment.Center,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Box(
-                Modifier
-                    .size(10.dp)
-                    .background(AirSpeakerColors.Accent, CircleShape)
-            )
-            Spacer(Modifier.height(20.dp))
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.offset(shift.first, shift.second)) {
             Text(
-                text = friendlyName,
-                color = AirSpeakerColors.TextPrimary,
-                fontSize = 44.sp,
-                fontWeight = FontWeight.SemiBold,
+                text = timeText,
+                color = AirSpeakerColors.TextPrimary.copy(alpha = 0.75f),
+                fontSize = 120.sp,
+                fontWeight = FontWeight.Light,
+                style = TextStyle(fontFeatureSettings = "tnum"),
             )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = stringResource(R.string.waiting_for_airplay),
-                color = AirSpeakerColors.TextSecondary,
-                fontSize = 18.sp,
-            )
+            Text(dateText, color = AirSpeakerColors.TextSecondary, fontSize = 24.sp)
+            Spacer(Modifier.height(48.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(8.dp).background(AirSpeakerColors.Accent.copy(alpha = 0.8f), CircleShape))
+                Spacer(Modifier.width(10.dp))
+                Text("$friendlyName · Ready for AirPlay", color = AirSpeakerColors.TextSecondary.copy(alpha = 0.5f), fontSize = 16.sp)
+            }
         }
     }
 }

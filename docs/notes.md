@@ -78,3 +78,15 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
 - pyatv's CLI `stream_file` never sends artwork, because its TinyTag-based reader ignores images. `scratchpad/stream_with_art.py` passes a `MediaMetadata` with artwork through the API instead.
 - Artwork is cleared when a DMAP text update names a different track. The exception is artwork that arrived within the previous second, since senders may send the image just before the text.
 - DACP looks for `_dacp._tcp` named `iTunes_Ctrl_<DACP-ID>` and resolves its port. It then sends `GET /ctrl-int/1/<cmd>` with `Active-Remote` to the sender's RTSP IP. pyatv doesn't advertise DACP, so this needs the iPhone.
+
+## Now Playing UI (Phase 6)
+
+- **Bringing the UI to the front from the service:** Android blocks background activity starts unless the app holds `SYSTEM_ALERT_WINDOW`.
+  - Google TV has no settings screen for it, so grant it with `appops set dev.suryansh.airspeaker SYSTEM_ALERT_WINDOW allow`.
+  - Verified: *"Background activity start for dev.suryansh.airspeaker allowed because SYSTEM_ALERT_WINDOW permission is granted"*. `MainActivity` resumed while the TV stayed asleep (with `files/no_wake` set).
+- **Waking the TV:** use a `SCREEN_BRIGHT_WAKE_LOCK | ACQUIRE_CAUSES_WAKEUP` wake lock.
+  - Apps targeting Android 14+ need `TURN_SCREEN_ON` for this; grant it with `appops set … TURN_SCREEN_ON allow`.
+  - The activity also calls `setTurnScreenOn(true)`.
+  - Waking happens at RECORD, about 2 s before the first audio is due, so HDMI is routed back before playback starts. Not tested yet, because it would light up the bedroom.
+- **Backdrop:** a 40 px thumbnail, box-blurred three times in software, drawn with bilinear filtering. It costs nothing on the GPU. The Ken Burns drift is read inside `graphicsLayer`, so it redraws without recomposing.
+- Screenshot tests disable all motion (`motion = false`), so frames are deterministic.

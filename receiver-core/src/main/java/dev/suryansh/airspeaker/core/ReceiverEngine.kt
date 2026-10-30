@@ -26,6 +26,9 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
     /** Called with true while audio is being output; the service raises its foreground type. */
     var onStreamingChanged: (Boolean) -> Unit = {}
 
+    /** Called when a sender starts a stream (RECORD), before audio is due: time to wake the TV. */
+    var onSessionStarted: () -> Unit = {}
+
     private var server: RtspServer? = null
     private var active: RaopConnection? = null
     private var dacp: DacpClient? = null
@@ -101,6 +104,10 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
             _state.update { if (it.status == NowPlayingState.Status.Playing) it.copy(status = NowPlayingState.Status.Paused) else it }
         }
         onStreamingChanged(playing)
+    }
+
+    override fun onRecord(connection: RaopConnection) {
+        if (isActive(connection)) onSessionStarted()
     }
 
     override fun onPaused(connection: RaopConnection) {

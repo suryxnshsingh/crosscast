@@ -28,6 +28,9 @@ interface RaopHost {
     fun gain(): Float
     fun onParameters(connection: RaopConnection, contentType: String?, body: ByteArray)
 
+    /** RECORD: the sender is about to start streaming. */
+    fun onRecord(connection: RaopConnection) = Unit
+
     /** Debug hook for decoded audio; null in normal use. */
     fun decodedTap(): ((pcm: ShortArray, frames: Int) -> Unit)? = null
 }
@@ -148,6 +151,7 @@ class RaopConnection(private val socket: Socket, private val host: RaopHost) {
             "RECORD" -> {
                 val s = session ?: return response.error(455, "Method Not Valid In This State")
                 s.startPlaying()
+                host.onRecord(this)
                 response.header("Audio-Latency", "11025")
             }
 
