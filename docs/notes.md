@@ -97,6 +97,6 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
 - **Supervisor:** every 15 s the service checks `engine.isHealthy` (server socket open and accept thread alive), and restarts the engine if not. The debug `kill_server` command was healed within one tick, and port 5000 accepted connections again.
 - **A sender that crashes** (its process killed with SIGKILL) ends the session at once: the Mac's kernel closes the TCP connection, the receiver goes Idle, and the UI shows the clock.
 - **Session timeout:** RTSP reads time out every 15 s. A connection with no RTSP request and no RTP packet for 120 s is dropped, matching Shairport's default `session_timeout`. If the sender wasn't gone, iOS reconnects on the next play. A sender silently dropping off Wi-Fi hasn't been simulated, because that needs firewall rules on the Mac.
-- **Idle auto-close** runs in `lifecycleScope`, not in composition. Compose stops collecting while the activity is stopped (TV asleep), so the composition-based timer never fired.
+- **Idle auto-close** was verified with the TV asleep: Idle at 06:29:06, `returning to the previous screen` at 06:32:06, then the launcher was back on top. It runs in `lifecycleScope`, not in composition. Compose stops collecting while the activity is stopped (TV asleep), so the composition-based timer never fired.
 - **Paused look is debounced by 2.5 s:** iOS sends FLUSH on every track skip, and new audio is about 2 s away.
 - **Resources at idle:** 0.0% CPU, about 98 MB PSS (debug build, with the UI open), 35 threads.
