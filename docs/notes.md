@@ -68,3 +68,13 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
   - Its sync packets give a latency of 66150 frames, +11025 = 77175.
   - A 20 s stream decoded on the TV matched the source exactly: 882,000 frames.
 - `RaopEndToEndTest` acts like iOS over loopback sockets: Apple-Challenge, RSA-OAEP-wrapped key, AES-CBC ALAC. It checks the decoded PCM is bit-exact. Encrypted ALAC from a real iPhone is still to be confirmed.
+
+## Metadata (Phase 5)
+
+- On the TV, through pyatv, everything landed within 0.2 s of ANNOUNCE:
+  - `progress 0:00 / 0:20`
+  - `track "…" by … on …`
+  - `artwork 1080×1080 from 113 KB image/jpeg` (a 1400 px cover, scaled down)
+- pyatv's CLI `stream_file` never sends artwork, because its TinyTag-based reader ignores images. `scratchpad/stream_with_art.py` passes a `MediaMetadata` with artwork through the API instead.
+- Artwork is cleared when a DMAP text update names a different track. The exception is artwork that arrived within the previous second, since senders may send the image just before the text.
+- DACP looks for `_dacp._tcp` named `iTunes_Ctrl_<DACP-ID>` and resolves its port. It then sends `GET /ctrl-int/1/<cmd>` with `Active-Remote` to the sender's RTSP IP. pyatv doesn't advertise DACP, so this needs the iPhone.

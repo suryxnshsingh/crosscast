@@ -73,6 +73,7 @@ class AirPlayReceiverService : LifecycleService() {
         val e = ReceiverEngine(applicationContext, identity)
         e.onStreamingChanged = { streaming -> lifecycleScope.launch { setStreaming(streaming) } }
         engine = e
+        ReceiverState.remote = e::sendRemote
         lifecycleScope.launch { e.state.collect { ReceiverState.publish(it) } }
         return withContext(Dispatchers.IO) { e.start(RaopService.RTSP_PORT) }
     }
@@ -102,6 +103,7 @@ class AirPlayReceiverService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        ReceiverState.remote = null
         engine?.stop()
         advertiser.close()
         multicastLock?.release()

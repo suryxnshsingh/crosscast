@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug builds only: sends a DACP command to the sender from adb. See docs/acceptance.md, Phase 5. -->
+        <receiver
+            android:name=".service.DebugCommandReceiver"
+            android:exported="true" />
+    </application>
+</manifest>

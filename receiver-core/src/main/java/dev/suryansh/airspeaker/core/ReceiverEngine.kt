@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.SystemClock
 import dev.suryansh.airspeaker.core.audio.AudioFocus
 import dev.suryansh.airspeaker.core.audio.Volume
+import dev.suryansh.airspeaker.core.dacp.DacpClient
+import dev.suryansh.airspeaker.core.meta.MetadataHandler
 import dev.suryansh.airspeaker.core.raop.RaopConnection
 import dev.suryansh.airspeaker.core.raop.RaopHost
 import dev.suryansh.airspeaker.core.rtsp.RtspServer
@@ -24,11 +26,10 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
     /** Called with true while audio is being output; the service raises its foreground type. */
     var onStreamingChanged: (Boolean) -> Unit = {}
 
-    /** Hook for SET_PARAMETER bodies other than volume (metadata, artwork, progress). */
-    var parameterSink: (contentType: String?, body: ByteArray) -> Unit = { _, _ -> }
-
     private var server: RtspServer? = null
     private var active: RaopConnection? = null
+    private var dacp: DacpClient? = null
+    private val metadata = MetadataHandler { transform -> _state.update(transform) }
     private var focusGain = 1f
     private val audioFocus = AudioFocus(context) { gain ->
         focusGain = gain
@@ -50,7 +51,19 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
         synchronized(this) { active }?.terminate()
     }
 
-    fun update(transform: (NowPlayingState) -> NowPlayingState) = _state.update(transform)
+    /**
+     * Asks the current sender to play/pause, skip, etc. Returns the HTTP status, or null when no
+     * sender is playing or it doesn't offer remote control.
+     */
+    suspend fun sendRemote(command: DacpClient.Command): Int? {
+        val client = synchronized(this) {
+            val connection = active ?: return null
+            val id = connection.dacpId ?: return null
+            val token = connection.activeRemote ?: return null
+            dacp?.takeIf { it.dacpId == id } ?: DacpClient(context, id, token, connection.senderAddress).also { dacp = it }
+        }
+        return client.send(command)
+    }
 
     // ---- RaopHost ----------------------------------------------------------------------------
 
@@ -68,6 +81,7 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
         synchronized(this) {
             if (active !== connection) return
             active = null
+            dacp = null
         }
         audioFocus.release()
         onStreamingChanged(false)
@@ -108,7 +122,7 @@ class ReceiverEngine(private val context: Context, private val identity: Receive
     }
 
     override fun onParameters(connection: RaopConnection, contentType: String?, body: ByteArray) {
-        if (isActive(connection)) parameterSink(contentType, body)
+        if (isActive(connection)) metadata.handle(contentType, body)
     }
 
     /** Debug: `run-as <pkg> touch files/dump_pcm` saves each session's decoded audio to files/dump.pcm. */

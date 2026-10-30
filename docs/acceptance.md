@@ -60,3 +60,14 @@ Debug switches on the TV (create the file to turn one on, delete it to turn it o
 6. *(you)* The iPhone volume slider changes loudness smoothly, the bottom of the slider is quiet but audible, and muting is silent. The TV's own volume is not touched.
 7. *(you)* Disconnect (pick "iPhone" as the output) and reconnect to Room Speaker. It plays again **without** restarting the app.
 8. *(you)* While Room Speaker is playing from the iPhone, start AirPlay from the Mac. The Mac takes over and the iPhone stops.
+
+## Phase 5: metadata, artwork, progress
+
+1. *(Mac)* `./gradlew test` passes, covering:
+   - DMAP parsing of real-shaped `mlit` bodies (title, artist, album, duration, nested containers, unknown tags skipped)
+   - progress `start/current/end` parsing, including 32-bit RTP wrap
+   - the DACP service name and request format
+2. *(Mac → TV, muted)* pyatv streams a tagged MP3 with cover art. Within 1 s, `adb -s $TV logcat -s meta` shows `track "…" by … on …`, `artwork W×H` (≤ 1080 px) and `progress m:ss / m:ss`.
+3. *(you)* iPhone → Room Speaker: skip to the next track. `logcat -s meta` shows the new title, artist and artwork within 1 s of the change.
+4. *(you)* After a track with no artwork, the artwork is cleared rather than left over from the previous track.
+5. *(you, with Phase 6 UI)* With the receiver playing from the iPhone, `adb -s $TV shell am broadcast -a dev.suryansh.airspeaker.DACP --es command playpause -n dev.suryansh.airspeaker/.service.DebugCommandReceiver` (debug builds only) pauses the iPhone, and `logcat -s meta` shows `DACP playpause → 204`.
