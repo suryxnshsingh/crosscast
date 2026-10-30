@@ -9,6 +9,8 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
 - The UI renders at **1920×1080 / 320 dpi** while HDMI outputs 3840×2160. Design for 1080p; downscaling artwork to 1080p is enough.
 - **Ports in use:** 6466/6467 (TV remote), 8008/8009/8443 (Cast), 9000, 10001, 10042. Ports **5000 and 7000 are free**; classic Shairport defaults to 5000.
 - There is **no `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` settings activity**, so Phase 2 item 6 has nothing to ask. For development, use `adb shell dumpsys deviceidle whitelist +<package>`.
+- **The CPU never suspends**, even when the TV is asleep. `dumpsys alarm` reports the same elapsed time and uptime, and batterystats shows 31 days of run time with uptime equal to realtime. The Chromecast itself holds `chromecast:kernelAwakeFromRecentMdns`. So an idle listener doesn't need a wake lock, and mains power means Doze never kicks in.
+- ADB, the network and new activities all keep working while the TV is asleep. `am start` does **not** wake the screen.
 - Android 15 blocks starting `mediaPlayback` foreground services from `BOOT_COMPLETED`, but this device runs Android 14, so it isn't affected yet. Re-check this if the TV is updated.
 
 ## ADB over Wi-Fi
@@ -28,3 +30,16 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
 - From Shairport `common.c`: the AES key in ANNOUNCE (`rsaaeskey`) is unwrapped with **RSA-OAEP (SHA-1)**, and the Apple-Challenge response is a **PKCS#1 v1.5** private-key signature.
 - ALAC is not a guaranteed MediaCodec codec on Android; it's only an OEM extra on some devices. Use our own decoder.
 - Classic AirPlay senders ask for about 2.0–2.25 s of latency (Shairport README).
+
+## Foreground service type (Phase 2 decision)
+
+- `AirPlayReceiverService` declares `connectedDevice|mediaPlayback`.
+  - While idle it runs as **`connectedDevice`**. That covers interaction with network-connected external devices, and `CHANGE_WIFI_MULTICAST_STATE` satisfies its permission requirement.
+  - It adds **`mediaPlayback`** only while a session is streaming (`setStreaming(true)`). If the system refuses the switch, it stays `connectedDevice`, and audio still plays because the process remains foreground.
+- **Why not `mediaPlayback` all the time:** Android 15+ blocks `mediaPlayback` foreground services started from `BOOT_COMPLETED`. Using the same idle type on every Android version means the code path tested today on Android 14 keeps working if the TV is updated.
+- **Start triggers:**
+  - opening the app
+  - `BOOT_COMPLETED`
+  - `MY_PACKAGE_REPLACED`, so `adb install -r` restarts the receiver without opening the app
+  - `START_STICKY` after a process death; this was measured restarting in about 3 s
+- On this TV the app is on the **deviceidle whitelist** (`cmd deviceidle whitelist +dev.suryansh.airspeaker`). This persists across reboots.
