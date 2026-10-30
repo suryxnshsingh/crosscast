@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Crosscast's gradient: violet at the bottom left to coral at the top right. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:angle="45"
+        android:startColor="#FF6A4CF5"
+        android:centerColor="#FFB24ACB"
+        android:endColor="#FFFF7A59"
+        android:type="linear" />
+</shape>

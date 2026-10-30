@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "dev.suryansh.airspeaker.core"
+    namespace = "dev.suryansh.crosscast.core"
     compileSdk = 37
 
     defaultConfig {

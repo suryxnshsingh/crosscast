@@ -1,125 +1,135 @@
-# AirSpeaker
+<p align="center"><img src="docs/images/banner.png" alt="Crosscast" width="640"></p>
 
-Turns a Chromecast with Google TV into an always-on AirPlay (classic RAOP) audio receiver with a full-screen Now Playing display.
+**Crosscast** turns a Google TV or Android TV, such as a Chromecast with Google TV, into an always-on AirPlay speaker for your iPhone, with a full-screen Now Playing display.
 
-- Engine choice and reasoning: [`docs/decision-engine.md`](docs/decision-engine.md)
-- Device quirks and discoveries: [`docs/notes.md`](docs/notes.md)
-- Per-phase acceptance tests: [`docs/acceptance.md`](docs/acceptance.md)
+- Pick the TV in the AirPlay menu on your iPhone, iPad or Mac, and the music plays through the TV's speakers.
+- If the TV is asleep, it wakes up and shows the cover art, title and progress.
+- Control playback from the iPhone, the Apple Watch or the TV remote.
+- After the music stops, the TV goes back to whatever it was showing.
 
-## Modules
+<p align="center">
+  <img src="app/src/test/screenshots/now_playing.png" alt="Now Playing" width="49%">
+  <img src="app/src/test/screenshots/now_playing_paused.png" alt="Paused" width="49%">
+  <img src="app/src/test/screenshots/idle_clock.png" alt="Idle clock" width="49%">
+  <img src="app/src/test/screenshots/settings.png" alt="Status and settings" width="49%">
+</p>
 
-| Module | Contents |
+## Features
+
+- **Always ready.** It starts with the TV, survives reboots and app updates, and heals itself if its server dies.
+- **Hi-fi audio.** Apple Lossless decoded bit-exact, kept in sync with the sender's clock (typically within 1 ms), with resend of lost packets.
+- **Now Playing.**
+  - artwork with Apple-style continuous corners, on a slowly moving background made from the cover's colours
+  - title, artist, album and live progress, with the sender's name
+- **Pause that looks paused.** The progress bar stops and the artwork settles back, like Apple Music.
+- **Remote control.**
+  - The TV remote's OK, ◀ and ▶ control the iPhone.
+  - Volume from the iPhone or Watch shows on screen.
+- **Remembers your volume.** iOS starts every classic-AirPlay session at a third of the slider. Crosscast plays at the level you last listened at instead, and the slider still spans its full range, quietest to loudest.
+- **Kind to the panel.** A dim clock when idle, and a slow pixel shift against burn-in.
+
+## Requirements
+
+- Google TV or Android TV running Android 12 (API 31) or newer. Developed on a Chromecast with Google TV 4K (Android TV 14).
+- An iPhone, iPad or Mac on the same Wi-Fi network.
+- A computer with `adb` for the one-time setup. Google TV has no screen for the permissions Crosscast needs.
+
+## Install
+
+1. Download `crosscast-<version>.apk` from [Releases](../../releases).
+2. Turn on developer options on the TV: Settings → System → About, then press *Android TV OS build* 7 times.
+3. Go to Settings → System → Developer options and switch on **Wireless debugging**.
+4. Pair your computer and connect:
+
+   ```sh
+   adb pair <tv-ip>:<pairing-port> <code>   # Wireless debugging → Pair device with pairing code
+   adb connect <tv-ip>:<port>               # the address shown on the Wireless debugging screen
+   ```
+
+5. Install, then grant the three permissions Google TV doesn't ask for itself:
+
+   ```sh
+   adb install crosscast-<version>.apk
+   # Let Crosscast bring Now Playing to the front when music starts
+   adb shell appops set dev.suryansh.crosscast SYSTEM_ALERT_WINDOW allow
+   # Let it wake the TV (a sleeping Chromecast sends no audio over HDMI)
+   adb shell appops set dev.suryansh.crosscast TURN_SCREEN_ON allow
+   # Keep Android from putting it to sleep
+   adb shell cmd deviceidle whitelist +dev.suryansh.crosscast
+   ```
+
+6. Open Crosscast once from the TV's apps row. From then on it starts by itself, after every reboot as well.
+
+## Use
+
+- **Play:** on the iPhone, pick **Room Speaker** in Control Center → AirPlay, or from the AirPlay button in any music app.
+- **Rename:** on the idle clock, press **OK** to open Settings, which also shows the receiver's status and recent problems.
+
+| TV remote | While playing |
 |---|---|
-| `app` | Android TV app: activity, Compose for TV UI, foreground service |
-| `receiver-core` | AirPlay engine: mDNS, RTSP, RTP, decryption, ALAC, playback, metadata, DACP. It's pure Kotlin, and the protocol code is unit-tested on the JVM, including a playback-sync simulation and an iOS-like end-to-end test. |
+| OK / play-pause | Play or pause on the iPhone |
+| ◀ / ▶ | Previous / next track |
+| Back | Hide Now Playing (the music keeps playing) |
+| Menu | Settings |
 
-## Prerequisites (macOS)
+## Limitations
+
+- **Classic AirPlay audio only** (AirPlay 1, "RAOP"):
+  - no AirPlay 2 multi-room or Home app speaker groups
+  - no video or screen mirroring
+  - one sender at a time; a new one takes over
+- **The iPhone's volume slider opens at about a third** on every connection. iOS gives classic receivers no way to set it. Crosscast compensates by playing at your last level.
+- **The screen wakes the TV,** because a sleeping Chromecast routes audio to a dummy output instead of HDMI.
+
+## How it works
+
+Everything is Kotlin; there's no native code. The AirPlay engine in [`receiver-core`](receiver-core) is pure Kotlin and unit-tested on the JVM:
+
+| Part | What it does |
+|---|---|
+| mDNS | Advertises `_raop._tcp` with the record set Shairport Sync uses |
+| RTSP | ANNOUNCE / SETUP / RECORD / FLUSH / SET_PARAMETER / TEARDOWN, with the Apple-Challenge |
+| Crypto | RSA-OAEP key unwrap, AES-128-CBC audio decryption |
+| Audio | ALAC decoding (port of David Hammerton's decoder), jitter buffer, NTP-style clock sync, drift correction by single-frame stuffing |
+| Metadata | DMAP track info, artwork, `progress`; position follows the audio actually heard |
+| DACP | Remote control back to the iPhone, over raw HTTP so IPv6 link-local addresses work |
+
+[`docs/notes.md`](docs/notes.md) records what real iPhones actually send, which differs from older documentation:
+- pause streams silence
+- there's no FLUSH on skip
+- the device name is in the SDP
+
+[`docs/decision-engine.md`](docs/decision-engine.md) explains why the engine is written from scratch rather than embedding Shairport Sync.
+
+## Build from source
+
+You need JDK 21 and the Android SDK (`local.properties` with `sdk.dir`, or `ANDROID_HOME`).
 
 ```sh
-brew install openjdk@21 && brew install --cask android-platform-tools
-export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
-export ANDROID_HOME=$HOME/Library/Android/sdk
-```
-
-The Android SDK lives in `~/Library/Android/sdk`, and `local.properties` points at it. Android Studio can use the same folder.
-
-## Build and test
-
-```sh
+./gradlew test                          # unit tests, including a 30-minute sync simulation and an iOS-like end-to-end stream
+./gradlew :app:verifyRoborazziDebug     # UI screenshots match app/src/test/screenshots
 ./gradlew assembleDebug                 # app/build/outputs/apk/debug/app-debug.apk
-./gradlew test                          # JVM unit tests
-./gradlew :app:recordRoborazziDebug     # re-render UI screenshots into app/src/test/screenshots
-./gradlew :app:verifyRoborazziDebug     # fail if the UI no longer matches those screenshots
+./gradlew assembleRelease               # signed with keystore.properties if present, otherwise the debug key
 ```
 
-## Connect to the TV (Android TV 14: wireless debugging)
+Debug builds add test hooks: flag files (`files/force_mute`, `files/no_wake`, `files/dump_pcm`) and broadcast commands. Run commands as `adb shell am broadcast -n dev.suryansh.crosscast/.service.DebugCommandReceiver -a dev.suryansh.crosscast.DEBUG --es command <name>`:
+- `playpause`, `nextitem`, `previtem`
+- `dacp`
+- `set_name`
+- `latency`
+- `kill_server`
 
-Do this once per Mac:
+[`tools/stream.py`](tools/stream.py) streams a file with metadata and artwork from a computer using [pyatv](https://pyatv.dev). Logs are tagged by subsystem: `adb logcat -s mdns rtsp audio meta ui`.
 
-1. On the TV, unlock developer options: Settings → System → About → press *Android TV OS build* 7 times.
-2. Go to Settings → System → Developer options and switch on **USB debugging** and **Wireless debugging**.
-3. In Wireless debugging, choose **Pair device with pairing code**, then run `adb pair 192.168.29.48:<pairing-port> <code>`.
+The logo, launcher icon and TV banner are generated by [`tools/brand`](tools/brand).
 
-Every time you connect:
+## Credits and licence
 
-```sh
-adb mdns services                             # shows the TV's current connect port
-adb connect 192.168.29.48:<port>
-export TV=192.168.29.48:<port>
-```
+Crosscast is MIT-licensed; see [`LICENSE`](LICENSE). It builds on:
+- **Shairport Sync**, by Mike Brady and contributors, as the reference for the protocol and timing
+- **David Hammerton's ALAC decoder**
+- the **Inter** typeface
 
-Wireless debugging turns itself off after a reboot. Switch it back on from the TV, and the connect port will be new.
+Details are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
-## Install and run
-
-```sh
-adb -s $TV install -r app/build/outputs/apk/debug/app-debug.apk
-adb -s $TV shell am start -n dev.suryansh.airspeaker/.MainActivity
-```
-
-## One-time setup on the TV
-
-Run these after the first install. A sideloaded Google TV app can't request them through a dialog:
-
-```sh
-# Let the background service bring Now Playing to the front when a session starts
-adb -s $TV shell appops set dev.suryansh.airspeaker SYSTEM_ALERT_WINDOW allow
-# Let a session wake the TV (asleep = no HDMI audio, see docs/notes.md)
-adb -s $TV shell appops set dev.suryansh.airspeaker TURN_SCREEN_ON allow
-# Exempt from app standby (there is no battery-optimisation screen on this TV)
-adb -s $TV shell cmd deviceidle whitelist +dev.suryansh.airspeaker
-```
-
-## Settings
-
-On the idle clock, press **OK** (or **MENU** while playing) to open status and settings:
-- name
-- auto-show Now Playing
-- idle timeout
-- audio delay adjustment
-- start on boot
-
-## Remote control while playing
-
-| Key | Action |
-|---|---|
-| OK / play-pause | play or pause on the iPhone (DACP) |
-| ◀ / ▶ | previous / next track |
-| Back | hide the UI; audio keeps playing |
-
-## Debugging
-
-Flag files switch on test behaviour in debug builds. Create the file to turn a flag on and delete it to turn it off:
-
-```sh
-adb -s $TV shell "run-as dev.suryansh.airspeaker sh -c 'touch files/force_mute'"   # play silence whatever the volume
-adb -s $TV shell "run-as dev.suryansh.airspeaker sh -c 'touch files/no_wake'"      # don't wake the TV for sessions
-adb -s $TV shell "run-as dev.suryansh.airspeaker sh -c 'touch files/dump_pcm'"     # save decoded audio to files/dump.pcm
-```
-
-Commands, also debug builds only:
-
-```sh
-R="-n dev.suryansh.airspeaker/.service.DebugCommandReceiver -a dev.suryansh.airspeaker.DEBUG"
-adb -s $TV shell am broadcast $R --es command playpause       # or nextitem / previtem (DACP to the sender)
-adb -s $TV shell am broadcast $R --es command set_name --es value "'Desk Speaker'"
-adb -s $TV shell am broadcast $R --es command latency --es value 40
-adb -s $TV shell am broadcast $R --es command kill_server     # the service restarts the engine within 15 s
-```
-
-Testing without an iPhone uses [pyatv](https://pyatv.dev). It sends unencrypted PCM; iPhones send encrypted ALAC, which `RaopEndToEndTest` covers:
-
-```sh
-python3 -m venv .venv && .venv/bin/pip install pyatv
-.venv/bin/python tools/stream.py song.wav --cover cover.jpg --title "Song"
-```
-
-## Logs
-
-Each subsystem logs under its own tag: `mdns`, `rtsp`, `audio`, `meta`, `ui`.
-
-```sh
-adb -s $TV logcat -s mdns rtsp audio meta ui        # just this app's subsystems
-adb -s $TV logcat -s rtsp audio                     # e.g. only protocol and playback
-adb -s $TV logcat --pid=$(adb -s $TV shell pidof dev.suryansh.airspeaker)   # everything from the app process
-```
+Crosscast is an independent project, not affiliated with, endorsed by or sponsored by Apple or Google. AirPlay, Apple Watch, iPad, iPhone and Mac are trademarks of Apple Inc. Android TV, Chromecast and Google TV are trademarks of Google LLC.

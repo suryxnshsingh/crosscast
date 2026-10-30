@@ -2,17 +2,17 @@
 
 Written before each phase is implemented. A step marked *(Mac)* runs on the Mac. *(TV)* means it is checked on the device over adb. *(you)* needs a person: the iPhone, eyes on the screen, ears on the speakers.
 
-All commands assume the TV is connected (see README → Connect to the TV) and `TV=192.168.29.48:<port>`.
+All commands assume the TV is connected (see README → Install) and `TV=<tv-ip>:<port>`.
 
 ## Phase 1: project skeleton
 
 1. *(Mac)* `./gradlew assembleDebug` succeeds, and so does `./gradlew test`.
 2. *(Mac)* `./gradlew :app:verifyRoborazziDebug` renders the placeholder screen at 1920×1080 and it matches the committed golden image. Open `app/src/test/screenshots/*.png` to look at it.
 3. *(TV)* `adb -s $TV install -r app/build/outputs/apk/debug/app-debug.apk` prints `Success`.
-4. *(TV)* `adb -s $TV shell cmd package query-activities -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER | grep airspeaker` lists `dev.suryansh.airspeaker/.MainActivity`, which means it appears in the TV's app list.
-5. *(TV)* `adb -s $TV shell am start -n dev.suryansh.airspeaker/.MainActivity`, then `adb -s $TV shell dumpsys activity activities | grep -E "topResumedActivity|ResumedActivity"` shows `MainActivity` (once the screen is awake).
+4. *(TV)* `adb -s $TV shell cmd package query-activities -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER | grep crosscast` lists `dev.suryansh.crosscast/.MainActivity`, which means it appears in the TV's app list.
+5. *(TV)* `adb -s $TV shell am start -n dev.suryansh.crosscast/.MainActivity`, then `adb -s $TV shell dumpsys activity activities | grep -E "topResumedActivity|ResumedActivity"` shows `MainActivity` (once the screen is awake).
 6. *(TV)* `adb -s $TV logcat -d -s ui` shows `MainActivity created`.
-7. *(you)* Open **AirSpeaker** from the Google TV app list. A full-screen dark placeholder ("Room Speaker", "Waiting for AirPlay") is shown, with no system bars or white flash.
+7. *(you)* Open **Crosscast** from the Google TV app list. A full-screen dark placeholder ("Room Speaker", "Waiting for AirPlay") is shown, with no system bars or white flash.
 
 ## Phase 2: always-on receiver service
 
@@ -21,11 +21,11 @@ Foreground-service strategy, explained in `docs/notes.md` → Foreground service
 - `mediaPlayback` is added while a session is streaming.
 
 1. *(Mac)* `./gradlew assembleDebug test` succeeds.
-2. *(TV)* With the app **not** opened, `adb -s $TV install -r app-debug.apk` triggers `MY_PACKAGE_REPLACED`. Within about 5 s, `adb -s $TV shell dumpsys activity services dev.suryansh.airspeaker` shows `AirPlayReceiverService` with `isForeground=true` and type `connectedDevice`.
-3. *(TV)* `adb -s $TV shell dumpsys wifi | grep -i -A2 "multicast"` lists a multicast lock held by `AirSpeaker`.
+2. *(TV)* With the app **not** opened, `adb -s $TV install -r app-debug.apk` triggers `MY_PACKAGE_REPLACED`. Within about 5 s, `adb -s $TV shell dumpsys activity services dev.suryansh.crosscast` shows `AirPlayReceiverService` with `isForeground=true` and type `connectedDevice`.
+3. *(TV)* `adb -s $TV shell dumpsys wifi | grep -i -A2 "multicast"` lists a multicast lock held by `Crosscast`.
 4. *(TV)* `adb -s $TV logcat -d -s mdns` shows `network available` once the service starts.
-5. *(TV)* Kill the process with `adb -s $TV shell run-as dev.suryansh.airspeaker kill -9 <pid>`. Within about 30 s the service is running again under a new pid (START_STICKY).
-6. *(TV)* `adb -s $TV shell cmd deviceidle whitelist` includes `dev.suryansh.airspeaker`. This TV has no battery-optimisation dialog, so this is set over adb.
+5. *(TV)* Kill the process with `adb -s $TV shell run-as dev.suryansh.crosscast kill -9 <pid>`. Within about 30 s the service is running again under a new pid (START_STICKY).
+6. *(TV)* `adb -s $TV shell cmd deviceidle whitelist` includes `dev.suryansh.crosscast`. This TV has no battery-optimisation dialog, so this is set over adb.
 7. *(you)* Reboot the TV (Settings → System → Restart) and do **not** open the app. Turn Wireless debugging back on and reconnect. Step 2's `dumpsys` then shows the service running and `logcat -s mdns` shows it started from `BOOT_COMPLETED`.
 
 ## Phase 3: discovery (mDNS)
@@ -44,7 +44,7 @@ Foreground-service strategy, explained in `docs/notes.md` → Foreground service
 ## Phase 4: audio pipeline
 
 Debug switches on the TV (create the file to turn one on, delete it to turn it off):
-- `adb -s $TV shell "run-as dev.suryansh.airspeaker sh -c 'touch files/force_mute'"` sends silence to the speakers whatever the sender's volume is. It's for testing at night.
+- `adb -s $TV shell "run-as dev.suryansh.crosscast sh -c 'touch files/force_mute'"` sends silence to the speakers whatever the sender's volume is. It's for testing at night.
 - `… touch files/dump_pcm` saves each session's decoded audio to `files/dump.pcm`, so it can be compared against the source.
 
 1. *(Mac)* `./gradlew test` passes, covering:
@@ -70,13 +70,13 @@ Debug switches on the TV (create the file to turn one on, delete it to turn it o
 2. *(Mac → TV, muted)* pyatv streams a tagged MP3 with cover art. Within 1 s, `adb -s $TV logcat -s meta` shows `track "…" by … on …`, `artwork W×H` (≤ 1080 px) and `progress m:ss / m:ss`.
 3. *(you)* iPhone → Room Speaker: skip to the next track. `logcat -s meta` shows the new title, artist and artwork within 1 s of the change.
 4. *(you)* After a track with no artwork, the artwork is cleared rather than left over from the previous track.
-5. *(you)* With the receiver playing from the iPhone, `adb -s $TV shell am broadcast -n dev.suryansh.airspeaker/.service.DebugCommandReceiver --es command playpause` (debug builds only) pauses the iPhone, and `logcat -s meta` shows `DACP playpause → 204`.
+5. *(you)* With the receiver playing from the iPhone, `adb -s $TV shell am broadcast -n dev.suryansh.crosscast/.service.DebugCommandReceiver --es command playpause` (debug builds only) pauses the iPhone, and `logcat -s meta` shows `DACP playpause → 204`.
 
 ## Phase 6: full-screen Now Playing UI
 
 One-time grants on the TV (sideloaded apps can't ask for these through a dialog on Google TV):
-`adb -s $TV shell appops set dev.suryansh.airspeaker SYSTEM_ALERT_WINDOW allow` (lets the background service bring the UI to the front)
-`adb -s $TV shell appops set dev.suryansh.airspeaker TURN_SCREEN_ON allow` (lets a session wake the TV)
+`adb -s $TV shell appops set dev.suryansh.crosscast SYSTEM_ALERT_WINDOW allow` (lets the background service bring the UI to the front)
+`adb -s $TV shell appops set dev.suryansh.crosscast TURN_SCREEN_ON allow` (lets a session wake the TV)
 
 1. *(Mac)* `./gradlew :app:verifyRoborazziDebug` renders the following at 1920×1080. Review the PNGs in `app/src/test/screenshots/`:
    - now playing with artwork

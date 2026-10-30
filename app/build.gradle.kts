@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -5,22 +7,40 @@ plugins {
 }
 
 android {
-    namespace = "dev.suryansh.airspeaker"
+    namespace = "dev.suryansh.crosscast"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "dev.suryansh.airspeaker"
+        applicationId = "dev.suryansh.crosscast"
         minSdk = 31
         targetSdk = 37
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
+    }
+
+    // Release builds are signed with the key named in keystore.properties (kept out of git).
+    // Without it, e.g. in a fresh clone, release builds fall back to the debug key.
+    val keystoreFile = rootProject.file("keystore.properties")
+    val keystoreProperties = Properties().apply {
+        if (keystoreFile.exists()) keystoreFile.inputStream().use { load(it) }
+    }
+    signingConfigs {
+        if (keystoreFile.exists()) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            // Sideloaded personal build: sign release with the debug key so it installs without setup.
-            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 

@@ -14,6 +14,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "AirSpeaker"
+rootProject.name = "Crosscast"
 
 include(":app", ":receiver-core")

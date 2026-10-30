@@ -7,3 +7,9 @@ local.properties
 *.iml
 captures/
 .venv/
+
+# Release signing: the keystore and its passwords never go into git.
+keystore.properties
+*.jks
+*.keystore
+release-keys/

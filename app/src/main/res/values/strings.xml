@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">AirSpeaker</string>
+    <string name="app_name">Crosscast</string>
     <string name="default_friendly_name">Room Speaker</string>
     <string name="waiting_for_airplay">Waiting for AirPlay</string>
     <string name="notification_channel_receiver">AirPlay receiver</string>

@@ -17,12 +17,12 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
 
 - On Android TV 14, **USB debugging does not open port 5555**. Use **Wireless debugging** instead, which requires pairing once.
   - On the TV: Developer options → Wireless debugging → Pair device with pairing code
-  - Then on the Mac: `adb pair 192.168.29.48:<pairing-port> <code>`
+  - Then on the Mac: `adb pair <tv-ip>:<pairing-port> <code>`
 - The connect port is random and changes whenever Wireless debugging is toggled. To find it:
   - `adb mdns services`, or
   - `dns-sd -B _adb-tls-connect._tcp`, then `dns-sd -L <instance> _adb-tls-connect._tcp`
-  - Then connect with `adb connect 192.168.29.48:<port>`.
-- The TV is at `192.168.29.48` and is called "Bedroom TV". Reserving that IP in the router keeps it stable.
+  - Then connect with `adb connect <tv-ip>:<port>`.
+- Reserving the TV's IP in the router keeps the `adb connect` address stable.
 
 ## Engine / protocol
 
@@ -45,7 +45,7 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
   - `BOOT_COMPLETED`
   - `MY_PACKAGE_REPLACED`, so `adb install -r` restarts the receiver without opening the app
   - `START_STICKY` after a process death; this was measured restarting in about 3 s
-- On this TV the app is on the **deviceidle whitelist** (`cmd deviceidle whitelist +dev.suryansh.airspeaker`). This persists across reboots.
+- On this TV the app is on the **deviceidle whitelist** (`cmd deviceidle whitelist +dev.suryansh.crosscast`). This persists across reboots.
 
 ## Audio pipeline (Phase 4)
 
@@ -82,8 +82,8 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
 ## Now Playing UI (Phase 6)
 
 - **Bringing the UI to the front from the service:** Android blocks background activity starts unless the app holds `SYSTEM_ALERT_WINDOW`.
-  - Google TV has no settings screen for it, so grant it with `appops set dev.suryansh.airspeaker SYSTEM_ALERT_WINDOW allow`.
-  - Verified: *"Background activity start for dev.suryansh.airspeaker allowed because SYSTEM_ALERT_WINDOW permission is granted"*. `MainActivity` resumed while the TV stayed asleep (with `files/no_wake` set).
+  - Google TV has no settings screen for it, so grant it with `appops set dev.suryansh.crosscast SYSTEM_ALERT_WINDOW allow`.
+  - Verified: *"Background activity start for dev.suryansh.crosscast allowed because SYSTEM_ALERT_WINDOW permission is granted"*. `MainActivity` resumed while the TV stayed asleep (with `files/no_wake` set).
 - **Waking the TV:** use a `SCREEN_BRIGHT_WAKE_LOCK | ACQUIRE_CAUSES_WAKEUP` wake lock.
   - Apps targeting Android 14+ need `TURN_SCREEN_ON` for this; grant it with `appops set … TURN_SCREEN_ON allow`.
   - The activity also calls `setTurnScreenOn(true)`.
