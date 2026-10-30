@@ -25,7 +25,7 @@ Foreground-service strategy, explained in `docs/notes.md` → Foreground service
 3. *(TV)* `adb -s $TV shell dumpsys wifi | grep -i -A2 "multicast"` lists a multicast lock held by `Crosscast`.
 4. *(TV)* `adb -s $TV logcat -d -s mdns` shows `network available` once the service starts.
 5. *(TV)* Kill the process with `adb -s $TV shell run-as dev.suryansh.crosscast kill -9 <pid>`. Within about 30 s the service is running again under a new pid (START_STICKY).
-6. *(TV)* `adb -s $TV shell cmd deviceidle whitelist` includes `dev.suryansh.crosscast`. This TV has no battery-optimisation dialog, so this is set over adb.
+6. *(TV)* With the TV asleep, run `adb -s $TV shell dumpsys deviceidle force-idle`. The receiver still answers on port 5000 and stays visible over Bonjour with no battery exemption, because a foreground service keeps its network in Doze. Undo with `dumpsys deviceidle unforce`.
 7. *(you)* Reboot the TV (Settings → System → Restart) and do **not** open the app. Turn Wireless debugging back on and reconnect. Step 2's `dumpsys` then shows the service running and `logcat -s mdns` shows it started from `BOOT_COMPLETED`.
 
 ## Phase 3: discovery (mDNS)
@@ -74,9 +74,7 @@ Debug switches on the TV (create the file to turn one on, delete it to turn it o
 
 ## Phase 6: full-screen Now Playing UI
 
-One-time grants on the TV (sideloaded apps can't ask for these through a dialog on Google TV):
-`adb -s $TV shell appops set dev.suryansh.crosscast SYSTEM_ALERT_WINDOW allow` (lets the background service bring the UI to the front)
-`adb -s $TV shell appops set dev.suryansh.crosscast TURN_SCREEN_ON allow` (lets a session wake the TV)
+First, allow "Display over other apps" from the app's setup screen (see "First-run setup" below), which lets the background service bring the UI to the front.
 
 1. *(Mac)* `./gradlew :app:verifyRoborazziDebug` renders the following at 1920×1080. Review the PNGs in `app/src/test/screenshots/`:
    - now playing with artwork
@@ -156,3 +154,17 @@ Nothing new is built for this phase. The Watch controls the iPhone, and the iPho
    - the volume comes back where you left it, without turning it up
    - half volume on the iPhone sounds about half as loud, not near silent
 9. *(TV)* `logcat -s audio meta`: each session logs `volume …`, and `in sync` and `silent for 750 ms` lines appear as audio starts and pauses.
+
+## First-run setup, no adb needed
+
+1. *(Mac)* `./gradlew :app:verifyRoborazziDebug` passes. `setup_allow.png`, `setup_done.png` and `setup_no_settings_screen.png` look right.
+2. *(TV)* Fresh install, then open Crosscast from the apps row. The setup screen appears with **Open TV Settings** focused.
+3. *(TV)* Press OK. The TV's "Allow display over other apps" screen opens, with Crosscast somewhere in the list. The highlight starts on the top row, which may be another app.
+4. *(TV)* Move to Crosscast, press OK, then Back. Setup now says "You're all set". Press OK on Done to reach the idle clock. `appops get dev.suryansh.crosscast SYSTEM_ALERT_WINDOW` shows `allow`.
+5. *(TV)* Put the TV to sleep and start a stream. It wakes within a second and Now Playing opens, in each of these cases:
+   - Crosscast was closed
+   - Crosscast was open in the background
+   - Crosscast was frontmost when the TV went to sleep
+   - the TV was forced into deep Doze
+6. *(TV)* `dumpsys activity services dev.suryansh.crosscast` shows the service in the foreground.
+7. *(TV)* With the permission revoked (`appops set dev.suryansh.crosscast SYSTEM_ALERT_WINDOW default`) and the TV awake on the home screen, a stream still plays, Now Playing doesn't open, and Settings shows "Not allowed" and the problem under Recent problems. Opening the app shows setup again.

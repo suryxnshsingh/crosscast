@@ -19,6 +19,8 @@ import dev.suryansh.crosscast.ui.NowPlayingScreen
 import dev.suryansh.crosscast.ui.SettingsActions
 import dev.suryansh.crosscast.ui.SettingsScreen
 import dev.suryansh.crosscast.ui.SettingsValues
+import dev.suryansh.crosscast.ui.SetupScreen
+import dev.suryansh.crosscast.ui.SetupStep
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
@@ -75,18 +77,38 @@ class UiScreenshotTest {
                 registered = true, lastSender = "Suryansh’s iPhone", lastSessionAtMs = 1_793_318_400_000L,
             ),
             problems = listOf("05:51:18 audio: sync error -56 ms; re-aligning", "05:49:44 rtsp: port 5000 is busy; using a free port"),
-            values = SettingsValues("Room Speaker", autoShowUi = true, idleTimeoutS = 180, latencyOffsetMs = 20, startOnBoot = true),
+            values = SettingsValues("Room Speaker", autoShowUi = true, idleTimeoutS = 180, latencyOffsetMs = 20, startOnBoot = true, canShowOverOtherApps = true),
             actions = object : SettingsActions {
                 override fun setFriendlyName(name: String) = Unit
                 override fun setAutoShowUi(value: Boolean) = Unit
                 override fun setIdleTimeoutS(value: Int) = Unit
                 override fun setLatencyOffsetMs(value: Int) = Unit
                 override fun setStartOnBoot(value: Boolean) = Unit
+                override fun openSetup() = Unit
             },
             version = "0.1.0",
             zone = ZoneId.of("Asia/Kolkata"),
         )
     }
+
+    @Test
+    fun setupAllow() = capture("setup_allow") { setup(SetupStep.Allow) }
+
+    @Test
+    fun setupDone() = capture("setup_done") { setup(SetupStep.Done) }
+
+    @Test
+    fun setupNoSettingsScreen() = capture("setup_no_settings_screen") { setup(SetupStep.NoSettingsScreen) }
+
+    @androidx.compose.runtime.Composable
+    private fun setup(step: SetupStep) = SetupScreen(
+        step = step,
+        friendlyName = "Room Speaker",
+        adbCommand = "adb shell appops set dev.suryansh.crosscast SYSTEM_ALERT_WINDOW allow",
+        onOpenSettings = {},
+        onDone = {},
+        motion = false,
+    )
 
     private fun capture(name: String, content: @androidx.compose.runtime.Composable () -> Unit) =
         captureRoboImage("src/test/screenshots/$name.png") { CrosscastTheme { content() } }

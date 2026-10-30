@@ -30,35 +30,29 @@
 
 ## Requirements
 
-- Google TV or Android TV running Android 12 (API 31) or newer. Developed on a Chromecast with Google TV 4K (Android TV 14).
+- Google TV or Android TV running Android 12 (API 31) or newer. Tested on a Chromecast with Google TV 4K (Android TV 14); other TVs should work but haven't been tried.
 - An iPhone, iPad or Mac on the same Wi-Fi network.
-- A computer with `adb` for the one-time setup. Google TV has no screen for the permissions Crosscast needs.
 
 ## Install
 
-1. Download `crosscast-<version>.apk` from [Releases](../../releases).
-2. Turn on developer options on the TV: Settings → System → About, then press *Android TV OS build* 7 times.
-3. Go to Settings → System → Developer options and switch on **Wireless debugging**.
-4. Pair your computer and connect:
+1. **Get the APK onto the TV.** The direct link is always the latest version:
 
-   ```sh
-   adb pair <tv-ip>:<pairing-port> <code>   # Wireless debugging → Pair device with pairing code
-   adb connect <tv-ip>:<port>               # the address shown on the Wireless debugging screen
+   ```
+   https://github.com/suryxnshsingh/crosscast/releases/latest/download/crosscast.apk
    ```
 
-5. Install, then grant the three permissions Google TV doesn't ask for itself:
+   - **From the TV:** install a sideloading app such as *Downloader* from the Play Store, enter the link, and allow it to install apps when the TV asks.
+   - **From a computer:** download the APK, connect with `adb connect <tv-ip>:<port>`, and run `adb install crosscast.apk`.
+2. **Open Crosscast** from the TV's apps row.
+3. **Allow it to display over other apps.** Press OK on **Open TV Settings**, move to Crosscast in the list and press OK on it, then press Back. The list doesn't start on Crosscast, so check which app is highlighted before pressing OK. This one permission is what lets music wake the TV and open Now Playing.
 
-   ```sh
-   adb install crosscast-<version>.apk
-   # Let Crosscast bring Now Playing to the front when music starts
-   adb shell appops set dev.suryansh.crosscast SYSTEM_ALERT_WINDOW allow
-   # Let it wake the TV (a sleeping Chromecast sends no audio over HDMI)
-   adb shell appops set dev.suryansh.crosscast TURN_SCREEN_ON allow
-   # Keep Android from putting it to sleep
-   adb shell cmd deviceidle whitelist +dev.suryansh.crosscast
-   ```
+That's all. From then on it starts by itself, after every reboot as well.
 
-6. Open Crosscast once from the TV's apps row. From then on it starts by itself, after every reboot as well.
+If you skip step 3, music plays only while the TV is awake, and Now Playing doesn't open by itself. You can allow it later from Settings on the idle clock. If your TV has no such settings screen, Crosscast tells you, and you can grant it from a computer instead:
+
+```sh
+adb shell appops set dev.suryansh.crosscast SYSTEM_ALERT_WINDOW allow
+```
 
 ## Use
 

@@ -1,14 +1,8 @@
 package dev.suryansh.crosscast
 
-import android.Manifest
-import android.annotation.SuppressLint
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Bundle
-import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.text.format.DateFormat
@@ -16,7 +10,6 @@ import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
@@ -27,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.core.content.edit
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import dev.suryansh.crosscast.core.Logs
@@ -55,12 +47,6 @@ import kotlinx.coroutines.launch
  * been over for the idle timeout, returning to whatever was on screen before.
  */
 class MainActivity : ComponentActivity() {
-
-    private val notificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            Logs.ui.i("notification permission granted=$granted")
-            askToIgnoreBatteryOptimisations()
-        }
 
     private var autoLaunched = false
     private var toast by mutableStateOf<RemoteToast?>(null)
@@ -107,7 +93,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        askForPermissionsOnce()
+        // The service can only open us once this is allowed, so this is the user opening the app.
+        if (savedInstanceState == null && !Settings.canDrawOverlays(this)) SetupActivity.open(this)
 
         // Outside composition so it also runs while the activity is stopped (e.g. the TV went to sleep).
         lifecycleScope.launch {
@@ -159,32 +146,6 @@ class MainActivity : ComponentActivity() {
         toast = message
         delay(1_200)
         if (toast == message) toast = null
-    }
-
-    /** First launch only: the notification permission, then the battery-optimisation exemption. */
-    private fun askForPermissionsOnce() {
-        val prefs = getSharedPreferences("first_run", MODE_PRIVATE)
-        if (prefs.getBoolean("permissions_asked", false)) return
-        prefs.edit { putBoolean("permissions_asked", true) }
-
-        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            askToIgnoreBatteryOptimisations()
-        }
-    }
-
-    @SuppressLint("BatteryLife") // An always-on receiver is the use case this exemption exists for.
-    private fun askToIgnoreBatteryOptimisations() {
-        if (getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)) return
-        try {
-            startActivity(
-                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
-            )
-        } catch (e: ActivityNotFoundException) {
-            // Google TV on the Chromecast has no such screen; use `cmd deviceidle whitelist` instead.
-            Logs.ui.i("battery optimisation settings not available on this device")
-        }
     }
 
     companion object {

@@ -8,7 +8,7 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
 - The HDMI output mixer runs at a fixed **48 kHz / 16-bit**. 44.1 kHz AirPlay audio is resampled by the platform.
 - The UI renders at **1920×1080 / 320 dpi** while HDMI outputs 3840×2160. Design for 1080p; downscaling artwork to 1080p is enough.
 - **Ports in use:** 6466/6467 (TV remote), 8008/8009/8443 (Cast), 9000, 10001, 10042. Ports **5000 and 7000 are free**; classic Shairport defaults to 5000.
-- There is **no `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` settings activity**, so Phase 2 item 6 has nothing to ask. For development, use `adb shell dumpsys deviceidle whitelist +<package>`.
+- There is **no `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` settings activity**, so Phase 2 item 6 has nothing to ask. It doesn't need asking: see "First-run setup" below.
 - **The CPU never suspends**, even when the TV is asleep. `dumpsys alarm` reports the same elapsed time and uptime, and batterystats shows 31 days of run time with uptime equal to realtime. The Chromecast itself holds `chromecast:kernelAwakeFromRecentMdns`. So an idle listener doesn't need a wake lock, and mains power means Doze never kicks in.
 - ADB, the network and new activities all keep working while the TV is asleep. `am start` does **not** wake the screen.
 - Android 15 blocks starting `mediaPlayback` foreground services from `BOOT_COMPLETED`, but this device runs Android 14, so it isn't affected yet. Re-check this if the TV is updated.
@@ -45,7 +45,6 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
   - `BOOT_COMPLETED`
   - `MY_PACKAGE_REPLACED`, so `adb install -r` restarts the receiver without opening the app
   - `START_STICKY` after a process death; this was measured restarting in about 3 s
-- On this TV the app is on the **deviceidle whitelist** (`cmd deviceidle whitelist +dev.suryansh.crosscast`). This persists across reboots.
 
 ## Audio pipeline (Phase 4)
 
@@ -82,11 +81,9 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
 ## Now Playing UI (Phase 6)
 
 - **Bringing the UI to the front from the service:** Android blocks background activity starts unless the app holds `SYSTEM_ALERT_WINDOW`.
-  - Google TV has no settings screen for it, so grant it with `appops set dev.suryansh.crosscast SYSTEM_ALERT_WINDOW allow`.
+  - The user grants it in the TV's Settings, from the setup screen (see "First-run setup" below).
   - Verified: *"Background activity start for dev.suryansh.crosscast allowed because SYSTEM_ALERT_WINDOW permission is granted"*. `MainActivity` resumed while the TV stayed asleep (with `files/no_wake` set).
-- **Waking the TV:** use a `SCREEN_BRIGHT_WAKE_LOCK | ACQUIRE_CAUSES_WAKEUP` wake lock.
-  - Apps targeting Android 14+ need `TURN_SCREEN_ON` for this; grant it with `appops set … TURN_SCREEN_ON allow`.
-  - The activity also calls `setTurnScreenOn(true)`.
+- **Waking the TV:** the activity calls `setTurnScreenOn(true)`, and coming to the front wakes the TV (see "First-run setup" below).
   - Waking happens at RECORD, about 2 s before the first audio is due, so HDMI is routed back before playback starts. Confirmed with a real iPhone on 2026-10-30 (see Phase 8).
 - **Backdrop:** a 40 px thumbnail, box-blurred three times in software, drawn with bilinear filtering. It costs nothing on the GPU. The Ken Burns drift is read inside `graphicsLayer`, so it redraws without recomposing.
 - Screenshot tests disable all motion (`motion = false`), so frames are deterministic.
@@ -152,3 +149,20 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
   - The iPhone's slider opens at about a third while the sound is at the remembered level.
   - User verdict 2026-10-30: "better but not the best", left as is for now.
   - The Chromecast's own HDMI volume was 16 of 25, which adds roughly 15 dB of attenuation on top.
+
+## First-run setup: one permission, no adb (measured 2026-10-30)
+
+Earlier notes said Google TV has no settings screen for `SYSTEM_ALERT_WINDOW`, and that waking the TV and staying reachable needed adb grants. That was assumed, not tested, and all of it was wrong. Tested on the TV with a fresh install, granting nothing over adb:
+
+- **`SYSTEM_ALERT_WINDOW`: the TV has the screen.**
+  - `ACTION_MANAGE_OVERLAY_PERMISSION` with a `package:` URI opens `com.android.tv.settings/.device.apps.specialaccess.SystemAlertActivity`.
+  - The URI doesn't select the app. The highlight starts on the top row, and the list order varies: Crosscast was first on one install and second on the next, under "Android TV Remote Service". Pressing OK straight away can therefore flip another app, so the setup screen says to move to Crosscast first. A scripted OK did exactly that during testing, and it was reverted with `appops set <pkg> SYSTEM_ALERT_WINDOW default`.
+  - `resolveActivity` can return null here because of package visibility rules, so the app just tries `startActivity` and handles `ActivityNotFoundException`.
+- **`TURN_SCREEN_ON`: not needed.** There's no screen for it (`TURN_SCREEN_ON_SETTINGS` resolves to nothing), but it only guards `ACQUIRE_CAUSES_WAKEUP` wake locks.
+  - An activity with `setTurnScreenOn(true)` wakes the TV without it: `Waking up from Asleep (uid=1000, reason=WAKE_REASON_APPLICATION, details=android.server.am:TURN_ON:handleTurnScreenOn)`, about 15 ms after RECORD.
+  - Audio was in sync about 1.4 s later.
+  - Works with the activity in the background, or frontmost when the TV went to sleep. The wake lock is gone.
+- **Battery exemption: not needed.** With `dumpsys deviceidle force-idle` (`mState=IDLE`) and the app not on the whitelist, Bonjour stayed visible, RTSP answered, a stream played and the TV woke. A foreground service keeps its network in Doze.
+- **`POST_NOTIFICATIONS`: no prompt needed.** It's granted on a fresh install without the app ever asking, and the service runs in the foreground (`isForeground=true`).
+- **`adb` itself can go stale:** the server had been running for 18 h and reported `No route to host`, with an empty `adb mdns services`, while `ping` and `nc` to the same port worked. `adb kill-server` fixed it.
+

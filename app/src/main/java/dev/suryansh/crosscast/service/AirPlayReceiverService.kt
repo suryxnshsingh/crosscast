@@ -8,7 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
-import android.os.PowerManager
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -104,26 +104,18 @@ class AirPlayReceiverService : LifecycleService() {
     }
 
     /**
-     * Wakes the TV and brings Now Playing to the front. Waking matters for sound too: while the
-     * Chromecast sleeps, audio is routed to a dummy output instead of HDMI.
+     * Brings Now Playing to the front, which also wakes the TV (MainActivity turns the screen on).
+     * Waking matters for sound too: while the Chromecast sleeps, audio is routed to a dummy output
+     * instead of HDMI.
      */
     private suspend fun onSessionStarted() {
         if (!SettingsRepository.from(this).autoShowUi.first()) return
-        if (!DebugFlags.noWake(this)) wakeScreen()
+        if (!Settings.canDrawOverlays(this)) Logs.ui.w("can't wake the TV or open Now Playing: “Display over other apps” is off")
         try {
             MainActivity.showForSession(this)
         } catch (e: RuntimeException) {
-            Logs.ui.w("could not open Now Playing; grant SYSTEM_ALERT_WINDOW (see docs/acceptance.md, Phase 6)", e)
+            Logs.ui.w("could not open Now Playing", e)
         }
-    }
-
-    private fun wakeScreen() {
-        val power = getSystemService(PowerManager::class.java)
-        if (power.isInteractive) return
-        @Suppress("DEPRECATION") // still the way for a service to turn the screen on; needs TURN_SCREEN_ON
-        power.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "Crosscast:session")
-            .acquire(3_000)
-        Logs.ui.i("woke the TV for a session (interactive=${power.isInteractive})")
     }
 
     private suspend fun advertise(network: LocalNetwork?, identity: ReceiverIdentity, port: Int) {

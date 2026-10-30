@@ -58,6 +58,7 @@ data class SettingsValues(
     val idleTimeoutS: Int,
     val latencyOffsetMs: Int,
     val startOnBoot: Boolean,
+    val canShowOverOtherApps: Boolean,
 )
 
 interface SettingsActions {
@@ -66,6 +67,7 @@ interface SettingsActions {
     fun setIdleTimeoutS(value: Int)
     fun setLatencyOffsetMs(value: Int)
     fun setStartOnBoot(value: Boolean)
+    fun openSetup()
 }
 
 val IDLE_TIMEOUT_CHOICES = listOf(30, 60, 180, 600, 1800)
@@ -92,6 +94,15 @@ fun SettingsScreen(
             item { SectionTitle("Settings") }
             item { NameItem(values.friendlyName, actions::setFriendlyName) }
             item {
+                ListItem(
+                    selected = false,
+                    onClick = actions::openSetup,
+                    headlineContent = { Text("Display over other apps") },
+                    supportingContent = { Text("Lets music wake the TV and open Now Playing") },
+                    trailingContent = { Value(if (values.canShowOverOtherApps) "Allowed" else "Not allowed") },
+                )
+            }
+            item {
                 ToggleItem("Show Now Playing when music starts", "Wakes the TV and brings the player forward", values.autoShowUi, actions::setAutoShowUi)
             }
             item {
@@ -106,7 +117,7 @@ fun SettingsScreen(
             }
             item { LatencyItem(values.latencyOffsetMs, actions::setLatencyOffsetMs) }
             item {
-                ToggleItem("Start when the TV turns on", "Keeps Room Speaker available after a restart", values.startOnBoot, actions::setStartOnBoot)
+                ToggleItem("Start when the TV turns on", "Keeps ${values.friendlyName} available after a restart", values.startOnBoot, actions::setStartOnBoot)
             }
         }
     }
