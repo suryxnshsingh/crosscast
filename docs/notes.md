@@ -46,3 +46,25 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
   - `MY_PACKAGE_REPLACED`, so `adb install -r` restarts the receiver without opening the app
   - `START_STICKY` after a process death; this was measured restarting in about 3 s
 - On this TV the app is on the **deviceidle whitelist** (`cmd deviceidle whitelist +dev.suryansh.airspeaker`). This persists across reboots.
+
+## Audio pipeline (Phase 4)
+
+- **While the TV is asleep there is no HDMI audio.**
+  - Audio policy reroutes output to `AUDIO_DEVICE_OUT_SPEAKER`, a dummy device.
+  - The mixer sits in standby ("Last write occurred 1500 ms" ago), and our track stays full and barely drains.
+  - AudioTrack logs `device stall time corrected using current time` and `retrograde timestamp`, and blocking writes return 0.
+  - **So a session has to wake the device (Phase 6), or nothing is heard.** Timing can't be measured with the screen off.
+- The player backs off 5 ms when the sink accepts nothing (earlier it busy-spun). It only re-aligns after 10 consecutive packets more than 50 ms off, so a single bad timestamp doesn't trigger it.
+- **Sync simulation** (`AudioPlayerSimulationTest`):
+  - Setup: virtual clock, sender +60 ppm, DAC −40 ppm, 50 ms output latency, ±1.5 ms timestamp jitter, 1–8 ms network delay, 0.1% loss.
+  - 30 minutes: max error 2.99 ms, mean 1.38 ms, net 7,853 frames dropped (≈ 100 ppm), no re-alignments, no underruns.
+  - A stuffing tolerance of ±2 ms kept the error sitting at +2 ms. ±1 ms centres it.
+- **ALAC fixtures:** made with ffmpeg from a 1.45 s mix of sweep, pink noise, silence and a quiet tone, at `-compression_level 0` (verbatim) and `2` (adaptive).
+  - ffmpeg ignores `-frame_size` for ALAC and always writes 4096-frame packets. That's fine for the decoder, which reads the frame length from the cookie or fmtp.
+  - Packets were dumped with `ffprobe -show_data`. The reference is the source WAV, because ffmpeg's CAF decode trims the last 1591 samples.
+- **pyatv as a test sender:**
+  - It can't discover the receiver; Android's mDNS doesn't answer pyatv's legacy-unicast queries. iOS and `dns-sd` both see it fine. Use `--manual --address … --port 5000 --protocol raop --id 1E2E5EB64A10`.
+  - It only sends **unencrypted L16**, starts with `GET /info`, and sends `POST /feedback`.
+  - Its sync packets give a latency of 66150 frames, +11025 = 77175.
+  - A 20 s stream decoded on the TV matched the source exactly: 882,000 frames.
+- `RaopEndToEndTest` acts like iOS over loopback sockets: Apple-Challenge, RSA-OAEP-wrapped key, AES-CBC ALAC. It checks the decoded PCM is bit-exact. Encrypted ALAC from a real iPhone is still to be confirmed.

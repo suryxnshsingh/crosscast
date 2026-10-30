@@ -40,3 +40,23 @@ Foreground-service strategy, explained in `docs/notes.md` → Foreground service
 4. *(TV)* After `run-as … kill -9` and the sticky restart, the advertised ID is the same as before (it's persisted).
 5. *(you)* iPhone → Control Centre → long-press the music tile → AirPlay icon. **Room Speaker** is listed. It won't play until Phase 4.
 6. *(you)* Toggle the TV's Wi-Fi off and back on. Within about 10 s `logcat -s mdns` shows the service registered again and the Mac's `dns-sd -B` lists it again.
+
+## Phase 4: audio pipeline
+
+Debug switches on the TV (create the file to turn one on, delete it to turn it off):
+- `adb -s $TV shell "run-as dev.suryansh.airspeaker sh -c 'touch files/force_mute'"` sends silence to the speakers whatever the sender's volume is. It's for testing at night.
+- `… touch files/dump_pcm` saves each session's decoded audio to `files/dump.pcm`, so it can be compared against the source.
+
+1. *(Mac)* `./gradlew test` passes, covering:
+   - bit-exact ALAC decoding against ffmpeg fixtures, in both verbatim and adaptive modes
+   - RSA-OAEP key unwrap, the Apple-Challenge signature, AES-CBC with a clear-text tail
+   - SDP and RTSP parsing, clock and anchor maths including 32-bit RTP wrap, jitter-buffer ordering, the volume curve
+2. *(Mac → TV, muted)* pyatv streams a 20 s test file (it needs `--manual`; see notes) (`atvremote --id 1E2E5EB64A10 stream_file=test20.wav`). Then:
+   - `logcat -s rtsp audio` shows ANNOUNCE → SETUP → RECORD, `in sync`, and then `sync error` lines under 5 ms
+   - the pulled `dump.pcm` equals the source PCM, ignoring leading and trailing silence
+3. *(Mac → TV, muted)* A 35-minute stream runs with no `re-aligning` and no `AudioTrack.write failed` lines. Missing packets stay at about 0, and the smoothed sync error stays within ±3 ms (drift correction keeps it there).
+4. *(you)* iPhone → Room Speaker, play music for **30+ minutes**: clean audio, with no clicks, dropouts or drift.
+5. *(you)* Pause and resume on the iPhone: it pauses within about 2 s (classic AirPlay latency) and resumes cleanly. Skipping forward and back starts the new track cleanly.
+6. *(you)* The iPhone volume slider changes loudness smoothly, the bottom of the slider is quiet but audible, and muting is silent. The TV's own volume is not touched.
+7. *(you)* Disconnect (pick "iPhone" as the output) and reconnect to Room Speaker. It plays again **without** restarting the app.
+8. *(you)* While Room Speaker is playing from the iPhone, start AirPlay from the Mac. The Mac takes over and the iPhone stops.
