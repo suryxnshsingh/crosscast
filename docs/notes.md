@@ -87,7 +87,7 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
 - **Waking the TV:** use a `SCREEN_BRIGHT_WAKE_LOCK | ACQUIRE_CAUSES_WAKEUP` wake lock.
   - Apps targeting Android 14+ need `TURN_SCREEN_ON` for this; grant it with `appops set … TURN_SCREEN_ON allow`.
   - The activity also calls `setTurnScreenOn(true)`.
-  - Waking happens at RECORD, about 2 s before the first audio is due, so HDMI is routed back before playback starts. Not tested yet, because it would light up the bedroom.
+  - Waking happens at RECORD, about 2 s before the first audio is due, so HDMI is routed back before playback starts. Confirmed with a real iPhone on 2026-10-30 (see Phase 8).
 - **Backdrop:** a 40 px thumbnail, box-blurred three times in software, drawn with bilinear filtering. It costs nothing on the GPU. The Ken Burns drift is read inside `graphicsLayer`, so it redraws without recomposing.
 - Screenshot tests disable all motion (`motion = false`), so frames are deterministic.
 
@@ -100,3 +100,9 @@ Discoveries made along the way: device quirks, Android restrictions and protocol
 - **Idle auto-close** was verified with the TV asleep: Idle at 06:29:06, `returning to the previous screen` at 06:32:06, then the launcher was back on top. It runs in `lifecycleScope`, not in composition. Compose stops collecting while the activity is stopped (TV asleep), so the composition-based timer never fired.
 - **Paused look is debounced by 2.5 s:** iOS sends FLUSH on every track skip, and new audio is about 2 s away.
 - **Resources at idle:** 0.0% CPU, about 98 MB PSS (debug build, with the UI open), 35 threads.
+
+## On the TV with a real iPhone (Phase 8)
+
+- 2026-10-30: the user streamed from their iPhone and reported that everything works as intended. The TV woke from sleep and played through HDMI, which means encrypted ALAC from iOS also works on the device.
+- **Restart:** after a TV restart, with the app left unopened, it still worked. `BOOT_COMPLETED` starts the service and the `appops` grants survive the restart.
+- **Wireless debugging:** it switched itself off overnight (or with the restart). The receiver doesn't need it.
